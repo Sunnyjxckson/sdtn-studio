@@ -797,6 +797,8 @@ export interface TorsoProfile {
   neck: [Vec, Vec];
   /** Shoulder tips. */
   tip: [Vec, Vec];
+  /** Top of each shoulder, from the neck out to the tip. */
+  shoulder: [Vec[], Vec[]];
   /** Underarm points where the arm leaves the body. */
   armpit: [Vec, Vec];
   /** Body side lines from the armpit down past the hip (y ascending). */
@@ -816,6 +818,10 @@ const stockSide = (sign: number): Vec[] => {
 const STOCK_TORSO: TorsoProfile = {
   neck: [P(281, 170), P(319, 170)],
   tip: [P(217, 200), P(383, 200)],
+  shoulder: [
+    [P(281, 170), P(272, 169), P(266, 172), P(260, 174.2), P(254, 176.2), P(248, 178), P(242, 179.8), P(236, 181.6), P(230, 184.1), P(224, 188.9), P(218, 198.9)],
+    [P(319, 170), P(330, 170.3), P(336, 172.9), P(342, 175), P(348, 176.9), P(354, 178.7), P(360, 180.5), P(366, 182.4), P(372, 185.7), P(378, 191.9), P(383, 200)],
+  ],
   armpit: [P(242, 256), P(358, 256)],
   sides: [stockSide(-1), stockSide(1)],
   waistY: 343,
@@ -849,6 +855,7 @@ export function torsoProfile(sex: Sex, pose: PoseId): TorsoProfile {
   const out: TorsoProfile = {
     neck: [shL[0], shR[0]],
     tip: [shL[shL.length - 1], shR[shR.length - 1]],
+    shoulder: [shL, shR],
     armpit: [torsoPt(r, P(b.side[0].x + 2, b.side[0].y - 6)), torsoPt(r, P(-b.side[0].x - 2, b.side[0].y - 6))],
     sides: [sd(1), sd(-1)],
     waistY: torsoPt(r, P(0, b.waistY)).y,

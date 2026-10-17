@@ -93,16 +93,22 @@ function edges(t: TorsoProfile, y: number): [number, number] {
 
 const neckY = (t: TorsoProfile) => (t.neck[0].y + t.neck[1].y) / 2;
 
-function vToY(t: TorsoProfile, v: number, u: number): number {
+function vToY(t: TorsoProfile, v: number): number {
   const yN = neckY(t);
-  let y = v <= 1 ? yN + v * (t.waistY - yN) : t.waistY + ((v - 1) / 0.5) * (t.hipY - t.waistY);
-  // the shoulder line slopes down from the neck to the shoulder tip
-  // the shoulder is rounded: it stays high, then drops toward the tip
-  const k = Math.min(1.2, Math.max(0, (Math.abs(u) - 0.3) / 0.7));
-  const tipDrop = ((t.tip[0].y + t.tip[1].y) / 2 - yN) * Math.pow(k, 1.8) - 2 * (1 - Math.min(1, v * 6));
-  const vPit = ((t.armpit[0].y + t.armpit[1].y) / 2 - yN) / (t.waistY - yN);
-  y += tipDrop * Math.max(0, 1 - v / vPit);
-  return y;
+  return v <= 1 ? yN + v * (t.waistY - yN) : t.waistY + ((v - 1) / 0.5) * (t.hipY - t.waistY);
+}
+
+/** Height of the top of the shoulder at canvas x (neck to tip), or null past the tip. */
+function shoulderY(t: TorsoProfile, x: number): number | null {
+  const s = x < (t.neck[0].x + t.neck[1].x) / 2 ? t.shoulder[0] : t.shoulder[1];
+  for (let i = 0; i < s.length - 1; i++) {
+    const a = s[i], b = s[i + 1];
+    if ((x - a.x) * (x - b.x) <= 0) return a.y + ((x - a.x) / (b.x - a.x || 1)) * (b.y - a.y);
+  }
+  // past the tip (dropped shoulders) the line keeps falling, like fabric over the shoulder
+  const tip = s[s.length - 1];
+  const out = Math.abs(x - s[0].x) > Math.abs(tip.x - s[0].x);
+  return out ? tip.y + Math.abs(x - tip.x) * 0.9 : null;
 }
 
 function armHalf(arm: TorsoProfile['arms'][0], a: number): number {
@@ -137,6 +143,26 @@ function halfAt(t: TorsoProfile, y: number, stiff: number): { c: number; h: numb
   return { c, h };
 }
 
+function torsoForward(t: TorsoProfile, u: number, v: number, stiff: number): Vec {
+  let y = vToY(t, v);
+  let x = 0;
+  // near the top, ride the actual shoulder line (a little above the skin) so nothing shows
+  for (let i = 0; i < 3; i++) {
+    const { c, h } = halfAt(t, y, stiff);
+    x = c + u * h;
+    if (v < 0.22) {
+      const sy = shoulderY(t, x);
+      if (sy != null) {
+        const yN = neckY(t);
+        const onShoulder = sy - 2 + v * (t.waistY - yN);
+        const w = Math.max(0, 1 - v / 0.22);
+        y = vToY(t, v) * (1 - w) + onShoulder * w;
+      }
+    }
+  }
+  return { x, y };
+}
+
 /** Top space to posed canvas. stiff: 0 hugs the body, 1 hangs straight from the chest. */
 export function topForward(t: TorsoProfile, p: Pt, stiff = 0): Vec {
   if (p.r === 'armL' || p.r === 'armR') {
@@ -148,9 +174,7 @@ export function topForward(t: TorsoProfile, p: Pt, stiff = 0): Vec {
     return { x: f.base.x + f.n.x * off, y: f.base.y + f.n.y * off };
   }
   const { u, v } = uv(p);
-  const y = vToY(t, v, u);
-  const { c, h } = halfAt(t, y, stiff);
-  return { x: c + u * h, y };
+  return torsoForward(t, u, v, stiff);
 }
 
 /** Posed canvas back to top space, in the given region. */
@@ -164,12 +188,10 @@ export function topInverse(t: TorsoProfile, q: Vec, region?: Pt['r'], stiff = 0)
       const dx = B.x - A.x, dy = B.y - A.y;
       const L = Math.hypot(dx, dy) || 1;
       const ux = dx / L, uy = dy / L;
-      let tt = ((q.x - A.x) * ux + (q.y - A.y) * uy) / L;
-      const clamped = Math.max(seg === 0 ? -0.3 : 0, Math.min(seg === 0 ? 1 : 1.3, tt));
-      const bx = A.x + dx * clamped, by = A.y + dy * clamped;
+      const tt = Math.max(seg === 0 ? -0.3 : 0, Math.min(seg === 0 ? 1 : 1.3, ((q.x - A.x) * ux + (q.y - A.y) * uy) / L));
+      const bx = A.x + dx * tt, by = A.y + dy * tt;
       const d = Math.hypot(q.x - bx, q.y - by);
       if (d < best.d) {
-        tt = clamped;
         const a = seg + tt;
         const off = (q.x - bx) * uy + (q.y - by) * -ux;
         best = { a, o: (off / armHalf(arm, a)) * (s === 0 ? 1 : -1), d };
@@ -177,15 +199,16 @@ export function topInverse(t: TorsoProfile, q: Vec, region?: Pt['r'], stiff = 0)
     }
     return { x: best.a * 100, y: 100 + best.o * 100, r: region };
   }
-  // solve v from y (the shoulder slope depends on u), then u from x
-  let u = 0, v = 0;
-  for (let i = 0; i < 6; i++) {
-    const yN = neckY(t);
-    // invert the piecewise v to y, then correct for the slope
-    const y0 = q.y - (vToY(t, v, u) - (v <= 1 ? yN + v * (t.waistY - yN) : t.waistY + ((v - 1) / 0.5) * (t.hipY - t.waistY)));
-    v = y0 <= t.waistY ? (y0 - yN) / (t.waistY - yN) : 1 + ((y0 - t.waistY) / (t.hipY - t.waistY)) * 0.5;
-    const { c, h } = halfAt(t, q.y, stiff);
-    u = (q.x - c) / (h || 1);
+  // numeric inverse: start from the plain mapping and walk toward the target
+  const yN = neckY(t);
+  const dYdv = t.waistY - yN;
+  let v = q.y <= t.waistY ? (q.y - yN) / dYdv : 1 + ((q.y - t.waistY) / (t.hipY - t.waistY)) * 0.5;
+  let u = 0;
+  for (let i = 0; i < 12; i++) {
+    const { h } = halfAt(t, q.y, stiff);
+    const f = torsoForward(t, u, v, stiff);
+    u += (q.x - f.x) / (h || 1);
+    v += (q.y - f.y) / (v > 1 ? (t.hipY - t.waistY) / 0.5 : dYdv);
   }
   return torsoPt(u, v);
 }

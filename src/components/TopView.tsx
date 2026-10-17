@@ -40,7 +40,6 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
     const hh = { x: c.x, y: c.y, r: h.r * 1.1 };
     return { h: hh, i, poly: ripPoly(g.id, i, hh) };
   });
-  const loose = g.top?.fit === 'Oversized' ? 1 : g.top?.fit === 'Regular' ? 0.5 : 0;
 
   return (
     <g id={`garment-${uid}`} data-gid={g.id}>
@@ -74,7 +73,7 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
           <g clipPath={`url(#${clip})`} pointerEvents="none">
             <rect x={0} y={0} width={600} height={1000} fill={`url(#tl-${uid})`} />
             <path d={body} fill="none" stroke="#000" strokeWidth={7} opacity={dark ? 0.36 : 0.16} filter={`url(#tb-${uid})`} style={{ mixBlendMode: 'multiply' }} />
-            {bust && (
+            {bust && stiff < 0.3 && (
               <g fill="#000" opacity={dark ? 0.18 : 0.08} filter={`url(#tb-${uid})`}>
                 <ellipse cx={F(-0.5, 0.47).x} cy={F(-0.5, 0.47).y} rx={14} ry={5} />
                 <ellipse cx={F(0.5, 0.47).x} cy={F(0.5, 0.47).y} rx={14} ry={5} />
@@ -82,12 +81,6 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
             )}
             {/* tension folds from the underarm, and drape on looser fits */}
             <g fill="none" stroke="#000" strokeLinecap="round" opacity={dark ? 0.32 : 0.2} filter={`url(#ts-${uid})`}>
-              {loose > 0 && (
-                <>
-                  <path d={line([F(-0.55, 0.3), F(-0.6, 0.7), F(-0.52, 1.1)])} strokeWidth={5 + loose * 4} opacity={0.25 + loose * 0.25} filter={`url(#tb-${uid})`} />
-                  <path d={line([F(0.45, 0.32), F(0.52, 0.72), F(0.48, 1.1)])} strokeWidth={5 + loose * 4} opacity={0.25 + loose * 0.25} filter={`url(#tb-${uid})`} />
-                </>
-              )}
               {g.top?.tuck && <path d={line([F(-0.6, 1.02), F(-0.3, 0.98), F(0, 1.03), F(0.3, 0.98), F(0.6, 1.02)])} strokeWidth={2} />}
             </g>
           </g>
