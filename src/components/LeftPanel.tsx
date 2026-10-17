@@ -62,9 +62,9 @@ function BasePanel() {
 const TOP_ITEMS: { name: string; o: TopOpts; icon: string }[] = [
   { name: 'Tank', o: { block: 'Tank', fit: 'Fitted', length: 'Waist', neck: 'Scoop', tuck: false }, icon: 'M14,6 L17,6 Q20,16 23,6 L26,6 L28,20 L29,46 L11,46 L12,20 Z' },
   { name: 'Baby tee', o: { block: 'Tee', fit: 'Fitted', length: 'Crop', neck: 'Crew', tuck: false }, icon: 'M14,10 Q20,14 26,10 L33,14 L31,22 L27,20 L27,36 L13,36 L13,20 L9,22 L7,14 Z' },
-  { name: 'Tee', o: { block: 'Tee', fit: 'Regular', length: 'Waist', neck: 'Crew', tuck: false }, icon: 'M14,8 Q20,12 26,8 L34,13 L31,23 L27,21 L28,46 L12,46 L13,21 L9,23 L6,13 Z' },
+  { name: 'Tee', o: { block: 'Tee', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M14,8 Q20,12 26,8 L34,13 L31,23 L27,21 L28,46 L12,46 L13,21 L9,23 L6,13 Z' },
   { name: 'Oversized', o: { block: 'Tee', fit: 'Oversized', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M13,8 Q20,12 27,8 L37,15 L33,27 L29,25 L30,50 L10,50 L11,25 L7,27 L3,15 Z' },
-  { name: 'Long sleeve', o: { block: 'Long sleeve', fit: 'Fitted', length: 'Waist', neck: 'Crew', tuck: false }, icon: 'M14,8 Q20,12 26,8 L32,12 L36,44 L32,45 L27,20 L27,46 L13,46 L13,20 L8,45 L4,44 L8,12 Z' },
+  { name: 'Long sleeve', o: { block: 'Long sleeve', fit: 'Fitted', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M14,8 Q20,12 26,8 L32,12 L36,44 L32,45 L27,20 L27,46 L13,46 L13,20 L8,45 L4,44 L8,12 Z' },
 ];
 
 function LibraryPanel() {

@@ -30,11 +30,11 @@ const armPt = (side: 'armL' | 'armR', a: number, o: number, key?: string): Pt =>
 export const uv = (p: { x: number; y: number }) => ({ u: (p.x - 150) / 100, v: (p.y - 100) / 200 });
 
 const EASE: Record<TopFit, { body: number; waist: number; sleeve: number; shoulder: number; drop: number }> = {
-  Fitted: { body: 1.04, waist: 1.0, sleeve: 1.1, shoulder: 1.04, drop: 0 },
+  Fitted: { body: 1.04, waist: 1.04, sleeve: 1.1, shoulder: 1.04, drop: 0 },
   Regular: { body: 1.1, waist: 1.1, sleeve: 1.26, shoulder: 1.07, drop: 0.03 },
   Oversized: { body: 1.26, waist: 1.3, sleeve: 1.55, shoulder: 1.2, drop: 0.12 },
 };
-const LENGTH_V: Record<TopLength, number> = { Crop: 0.8, Waist: 1.04, Hip: 1.42, Long: 1.7 };
+const LENGTH_V: Record<TopLength, number> = { Crop: 0.8, Waist: 1.1, Hip: 1.4, Long: 1.7 };
 const NECK_V: Record<NeckKind, number> = { Crew: 0.07, Scoop: 0.17, V: 0.27 };
 
 /** Keyed outline points, clockwise from the left neck, ending at the front neck point. */
@@ -274,6 +274,39 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0): TopShape {
         const strap = /^strap/.test(key(a)) ? a : b, pit = strap === a ? b : a;
         const c = torsoPt(uv(strap).u * 1.02, uv(pit).v * 0.92);
         for (let k = 1; k < cnt; k++) steps.push(quad(a, c, b, k / cnt));
+      } else if (key(a) === 'hemL' && key(b) === 'hemR') {
+        // body hem: dips a touch at the centre front and rolls up at the side seams
+        const cnt2 = 16;
+        for (let k = 1; k < cnt2; k++) {
+          const f = k / cnt2;
+          const p = lerpPt(a, b, f);
+          steps.push({ ...p, y: p.y + 4 * Math.sin(Math.PI * f) });
+        }
+      } else if (a.r && a.r === b.r && /^sl/.test(key(a)) && /^sl/.test(key(b))) {
+        // sleeve hem: curves around the arm
+        for (let k = 1; k < 8; k++) {
+          const f = k / 8;
+          const p = lerpPt(a, b, f);
+          steps.push({ ...p, x: p.x + 4 * Math.sin(Math.PI * f) });
+        }
+      } else if (!a.r && /^(arm|side)/.test(key(a)) && /^(side|hem)/.test(key(b))) {
+        // side seams bow in a little and the hem corner rounds off, so the body is not a box
+        const sgn = Math.sign(uv(a).u) || 1;
+        const toHem = /^hem/.test(key(b));
+        for (let k = 1; k < cnt; k++) {
+          const f = k / cnt;
+          const p = lerpPt(a, b, f);
+          const bow = 3.5 * Math.sin(Math.PI * f);
+          const corner = toHem ? 4 * Math.pow(f, 5) : 0;
+          steps.push({ ...p, x: p.x - sgn * (bow + corner) });
+        }
+      } else if (!a.r && /^hem/.test(key(a)) && /^side/.test(key(b))) {
+        const sgn = Math.sign(uv(a).u) || 1;
+        for (let k = 1; k < cnt; k++) {
+          const f = k / cnt;
+          const p = lerpPt(a, b, f);
+          steps.push({ ...p, x: p.x - sgn * (3.5 * Math.sin(Math.PI * f) + 4 * Math.pow(1 - f, 5)) });
+        }
       } else {
         for (let k = 1; k < cnt; k++) steps.push(lerpPt(a, b, k / cnt));
       }
@@ -297,7 +330,7 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0): TopShape {
     index[i] = outline.length;
     outline.push(F(a));
     steps.forEach((p) => outline.push(F(p)));
-    if ((key(a) === 'slOL' && key(b) === 'slIL') || (key(a) === 'slIR' && key(b) === 'slOR')) hems.push([F(a), F(b)]);
+    if ((key(a) === 'slOL' && key(b) === 'slIL') || (key(a) === 'slIR' && key(b) === 'slOR')) hems.push([F(a), ...steps.map(F), F(b)]);
     if (key(a) === 'hemL' && key(b) === 'hemR') hems.push([F(a), ...steps.map(F), F(b)]);
     if (a.r === 'armL' || b.r === 'armL') sleeveRun.L.push(F(a), ...steps.map(F));
     if (a.r === 'armR' || b.r === 'armR') sleeveRun.R.push(F(a), ...steps.map(F));
