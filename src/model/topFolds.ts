@@ -57,6 +57,18 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
       }
     }
   }
+  // hanging folds that rise from the hem where it ripples, longer on looser tops
+  if (loose > 0) {
+    for (let k = 0; k < 7; k++) {
+      const f = (k + 0.5) / 7;
+      if (Math.sin(f * Math.PI * 7 + 0.6) < 0.2) continue;
+      const u = -0.95 + f * 1.9;
+      const top = hemV - 0.12 - loose * 0.18 - r() * 0.08;
+      out.push({ pts: [T(u + j(0.03), top), T(u + j(0.04), (top + hemV) / 2), T(u, hemV - 0.01)], w: 3 + loose * 2.5, o: 0.18 + loose * 0.06, ridge: true });
+    }
+    // a long diagonal pull from the bust toward the far side of the hem, from the walking stride
+    out.push({ pts: [T(-0.4, 0.42), T(0.05, 0.75), T(0.55, hemV - 0.05)], w: 4 + loose * 2, o: 0.14, ridge: true });
+  }
   // collar bone drag under the neckline
   out.push({ pts: [T(-0.32, 0.12), T(0, 0.16 + (o.neck === 'Crew' ? 0 : 0.08)), T(0.32, 0.12)], w: 1.8, o: 0.12, ridge: false });
   if (o.tuck) {

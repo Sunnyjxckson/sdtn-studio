@@ -16,7 +16,7 @@ export interface Doc {
 
 export const emptyDoc = (): Doc => ({
   name: 'FW27 / Look 01',
-  base: { sex: 'male', view: 'front', skin: DEFAULT_SKIN, pose: 'stand' },
+  base: { sex: 'female', view: 'front', skin: DEFAULT_SKIN, pose: 'walk' },
   settings: { render: 'rendered', shading: true },
   garments: [],
   notes: [],

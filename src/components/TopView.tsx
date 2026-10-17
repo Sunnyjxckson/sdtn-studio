@@ -66,6 +66,20 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
   const hemP = g.points.find((p) => p.key === 'hemL');
   const folds = g.top ? topFolds(g.id, g.top, hemP ? uv(hemP).v : 1, bust) : [];
   const shadeC = mix(base, '#000000', dark ? 0.7 : 0.55);
+  // set-in sleeve seam: from the shoulder point round the top of the arm to the underarm
+  const armholes: string[] = [];
+  if (g.top && g.top.block !== 'Tank') {
+    for (const K of ['L', 'R'] as const) {
+      const sh = g.points.find((p) => p.key === `sh${K}`), pit = g.points.find((p) => p.key === `arm${K}`);
+      if (!sh || !pit) continue;
+      const drop = g.top.fit === 'Oversized' ? 0.3 : g.top.fit === 'Regular' ? 0.12 : 0.06;
+      const side = K === 'L' ? 'armL' : 'armR';
+      const a0 = topForward(t, sh, stiff), a2 = topForward(t, pit, stiff);
+      const c1 = topForward(t, { x: drop * 100 * 0.9, y: 100 - 35, r: side }, stiff);
+      const c2 = topForward(t, { x: drop * 100 * 0.7, y: 100 + 45, r: side }, stiff);
+      armholes.push(`M${f1(a0.x)},${f1(a0.y)} C${f1(c1.x)},${f1(c1.y)} ${f1(c2.x)},${f1(c2.y)} ${f1(a2.x)},${f1(a2.y)}`);
+    }
+  }
   const fill = rendered ? `url(#${fabricId(g)})` : base;
   const holes = g.holes.map((h, i) => {
     const c = topForward(t, { x: h.x, y: h.y }, stiff);
@@ -124,6 +138,12 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
         )}
         {/* neckline binding, sleeve and body hems */}
         <g fill="none" pointerEvents="none" strokeLinecap="round">
+          {armholes.map((d, i) => (
+            <g key={`ah${i}`} clipPath={`url(#${clip})`}>
+              <path d={d} stroke={shadeC} strokeWidth={rendered ? 3 : 0} opacity={0.12} filter={rendered ? `url(#tf-${uid})` : undefined} />
+              <path d={d} stroke={outline} strokeWidth={rendered ? 0.7 : 1} opacity={rendered ? 0.7 : 0.9} />
+            </g>
+          ))}
           <path d={line(shape.neckline)} stroke={outline} strokeWidth={rendered ? 3.2 : 1.2} opacity={rendered ? 0.22 : 1} />
           <path d={line(shape.neckline)} stroke={outline} strokeWidth={0.7} strokeDasharray={rendered ? '2 1.4' : undefined} transform="translate(0 2.6)" opacity={0.7} />
           {shape.hems.map((h, i) => (

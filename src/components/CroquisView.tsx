@@ -28,7 +28,7 @@ function StockView({ view, rendered, skin }: { view: View; rendered: boolean; sk
       <g pointerEvents="none" aria-label={label}>
         <defs>
           <clipPath id="croquis-clip">
-            <path d={art.sil} transform={art.mat} />
+            <path d={art.sil} transform={art.mat} clipRule="evenodd" />
           </clipPath>
           <filter id="croquis-blur" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation={5} />
@@ -37,7 +37,7 @@ function StockView({ view, rendered, skin }: { view: View; rendered: boolean; sk
             <feGaussianBlur stdDeviation={8} />
           </filter>
         </defs>
-        <path d={art.sil} transform={art.mat} fill={tone} />
+        <path d={art.sil} transform={art.mat} fill={tone} fillRule="evenodd" />
         <g clipPath="url(#croquis-clip)">
           <path d={art.sil} transform={art.mat} fill="none" stroke={shade} strokeWidth={26} opacity={0.5} filter="url(#croquis-blur)" style={{ mixBlendMode: 'multiply' }} />
           <path d="M278,240 Q300,226 322,240 L318,420 Q300,436 282,420 Z" fill={lite} opacity={0.2} filter="url(#croquis-soft)" />
@@ -48,7 +48,7 @@ function StockView({ view, rendered, skin }: { view: View; rendered: boolean; sk
   }
   return (
     <g pointerEvents="none" aria-label={label}>
-      <path d={art.sil} transform={art.mat} fill={PAPER} />
+      <path d={art.sil} transform={art.mat} fill={PAPER} fillRule="evenodd" />
       <path d={art.guide} transform={art.mat} fill={GUIDE} />
       <path d={art.ink} transform={art.mat} fill={INK} />
     </g>

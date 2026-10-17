@@ -397,6 +397,26 @@ export function Canvas() {
   const showHandles = !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
   const handleR = 6 / view.k;
   const selFit = showHandles && sel && sel.type !== 'top' ? fitOf(sel) : null;
+  // where each forearm can come forward: outside the torso, below the lowest sleeve on that side
+  const armFront = ([0, 1] as const).map((s) => {
+    let yLim = torso.armpit[s].y + 4;
+    for (const g of doc.garments) {
+      if (!g.visible || g.type !== 'top') continue;
+      const K = s === 0 ? 'L' : 'R';
+      const ends = g.points.filter((p) => p.key === `slO${K}` || p.key === `slI${K}` || p.key === `arm${K}`);
+      for (const p of ends) yLim = Math.max(yLim, topForward(torso, p, stiffOf(g.top)).y + 3);
+    }
+    const side = torso.sides[s];
+    const sx = (y: number) => {
+      if (y <= side[0].y) return side[0].x;
+      for (let i = 0; i < side.length - 1; i++) if (y <= side[i + 1].y) return side[i].x + ((y - side[i].y) / (side[i + 1].y - side[i].y || 1)) * (side[i + 1].x - side[i].x);
+      return side[side.length - 1].x;
+    };
+    const pts: string[] = [];
+    for (let y = yLim; y <= 1000; y += 6) pts.push(`${(sx(y) + (s === 0 ? -1 : 1)).toFixed(1)},${y.toFixed(1)}`);
+    const edge = s === 0 ? 0 : 600;
+    return `M${edge},${yLim} L${pts.join(' L')} L${edge},1000 Z`;
+  });
   const selTop = showHandles && sel && sel.type === 'top' ? topShape(torso, sel.points, stiffOf(sel.top)) : null;
   // tucked tops go under everything else
   const ordered = [...doc.garments.filter((g) => g.type === 'top' && g.top?.tuck), ...doc.garments.filter((g) => !(g.type === 'top' && g.top?.tuck))];
@@ -418,7 +438,11 @@ export function Canvas() {
     >
       <g ref={worldRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
         <Artboard />
-        {tab === 'sketch' && <CroquisView sex={doc.base.sex} view={doc.base.view} pose={doc.base.pose} rendered={rendered} skin={doc.base.skin} />}
+        {tab === 'sketch' && (
+          <g id="croquis-art">
+            <CroquisView sex={doc.base.sex} view={doc.base.view} pose={doc.base.pose} rendered={rendered} skin={doc.base.skin} />
+          </g>
+        )}
         {ordered.map((g) => {
           if (!g.visible) return null;
           if (g.type === 'top') {
@@ -445,6 +469,19 @@ export function Canvas() {
           }
           return <GarmentView key={g.id} g={fit.g} {...common} />;
         })}
+        {/* arms hang in front of the clothes: redraw the forearms and hands over the garments, below any sleeve */}
+        {tab === 'sketch' && doc.garments.some((g) => g.visible) && (
+          <>
+            <defs>
+              <clipPath id="arms-front">
+                {armFront.map((d, i) => (
+                  <path key={i} d={d} />
+                ))}
+              </clipPath>
+            </defs>
+            <use href="#croquis-art" clipPath="url(#arms-front)" pointerEvents="none" />
+          </>
+        )}
         {doc.notes.map((n) => {
           const { arrow, head } = notePaths(n);
           const on = n.id === selectedNote;
