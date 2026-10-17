@@ -135,6 +135,23 @@ export function FabricDefs({ g }: { g: Garment }) {
         </Tile>
       );
       break;
+    case 'Jersey':
+      tile = (
+        <Tile g={g} w={2} h={2}>
+          <rect width={2} height={2} fill={base} />
+          <rect width={1} height={1} fill={dark} opacity={0.05} />
+        </Tile>
+      );
+      break;
+    case 'Rib':
+      tile = (
+        <Tile g={g} w={2.4} h={10}>
+          <rect width={2.4} height={10} fill={base} />
+          <rect x={1.4} width={0.7} height={10} fill={dark} opacity={0.16} />
+          <rect x={0.3} width={0.5} height={10} fill={light} opacity={0.18} />
+        </Tile>
+      );
+      break;
   }
   return (
     <>

@@ -6,7 +6,10 @@ import { fitToArtboard, setCanvasSize, zoomBy } from '../viewport';
 import { Artboard, CroquisView } from './CroquisView';
 import { GarmentView } from './GarmentView';
 import { notePaths } from '../model/note';
-import { bodyProfile, IDENTITY_RIG, poseRig, poseUnwarp } from '../model/figure';
+import { bodyProfile, IDENTITY_RIG, poseRig, poseUnwarp, torsoProfile, type Vec } from '../model/figure';
+import { stiffOf, topForward, topInverse, topShape } from '../model/top';
+import { TopView } from './TopView';
+import type { Pt } from '../model/garment';
 import { fitGarment } from '../model/conform';
 import { getCroquis } from '../model/croquis';
 
@@ -21,6 +24,18 @@ type Drag =
   | { type: 'paint'; gid: string; last: { x: number; y: number } };
 
 const ACCENT = '#C8102E';
+
+/** Jeans: set the cut line. Tops: move everything on the body below the line up to it. */
+function cutTo(g: Garment, y: number) {
+  if (g.type === 'top') {
+    const yy = Math.max(150, y);
+    g.points.forEach((p) => {
+      if (!p.r && p.key !== 'neckF' && p.y > yy) p.y = yy;
+    });
+    return;
+  }
+  g.cropY = Math.min(GARMENT_H, Math.max(MIN_CROP_Y, y));
+}
 
 export function Canvas() {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -106,10 +121,16 @@ export function Canvas() {
   const body = bodyProfile(doc.base.sex, doc.base.pose);
   const sag = doc.base.view === 'front' ? 6 : 3;
   const fitOf = (g: Garment) => fitGarment(g, rig, body, sag);
+  const torso = torsoProfile(doc.base.sex, tab === 'sketch' ? doc.base.pose : 'stand');
   const garmentById = (id: string | null): Garment | undefined => doc.garments.find((g) => g.id === id);
-  /** Pointer to garment space, undoing the pose and the garment transform. */
-  const local = (gid: string, e: { clientX: number; clientY: number }) => {
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  /** Pointer to garment space, undoing the pose and the garment transform (tops: body space). */
+  const local = (gid: string, e: { clientX: number; clientY: number }, region?: Pt['r']) => {
     const g = garmentById(gid) ?? useStore.getState().doc.garments.find((x) => x.id === gid);
+    if (g?.type === 'top') {
+      const p = topInverse(torso, world(e), region, stiffOf(g.top));
+      return { x: r1(p.x), y: r1(p.y) };
+    }
     const q = poseUnwarp(rig, world(e));
     if (!g) return q;
     const t = g.transform;
@@ -225,11 +246,24 @@ export function Canvas() {
         drag.current = { type: 'pt', gid: sel.id, i: idx, started: false };
         return;
       }
-      const at = local(sel.id, e);
-      const { index, point } = nearestSegment(sel.points, at);
+      let index: number, np: Pt;
+      if (sel.type === 'top') {
+        // find the nearest edge on the canvas, then put the new point in that edge's space
+        const fw = sel.points.map((p) => topForward(torso, p, stiffOf(sel.top)));
+        const near = nearestSegment(fw, world(e));
+        index = near.index;
+        const a = sel.points[(index - 1 + sel.points.length) % sel.points.length], b = sel.points[index % sel.points.length];
+        const region = a.r && a.r === b.r ? a.r : undefined;
+        const q = topInverse(torso, near.point, region, stiffOf(sel.top));
+        np = { x: r1(q.x), y: r1(q.y), ...(region ? { r: region } : {}) };
+      } else {
+        const near = nearestSegment(sel.points, local(sel.id, e));
+        index = near.index;
+        np = { x: near.point.x, y: near.point.y };
+      }
       st.checkpoint();
       st.edit(sel.id, (g) => {
-        g.points.splice(index, 0, { x: point.x, y: point.y });
+        g.points.splice(index, 0, np);
       });
       drag.current = { type: 'pt', gid: sel.id, i: index, started: true };
       return;
@@ -241,9 +275,7 @@ export function Canvas() {
 
     if (t === 'cut') {
       st.checkpoint();
-      st.edit(sel.id, (g) => {
-        g.cropY = Math.min(GARMENT_H, Math.max(MIN_CROP_Y, at.y));
-      });
+      st.edit(sel.id, (g) => cutTo(g, at.y));
       drag.current = { type: 'cut', gid: sel.id };
     } else if (t === 'hole') {
       st.checkpoint();
@@ -277,7 +309,7 @@ export function Canvas() {
       return;
     }
     if (d.type === 'pt') {
-      const at = local(d.gid, e);
+      const at = local(d.gid, e, garmentById(d.gid)?.points[d.i]?.r);
       if (!d.started) {
         st.checkpoint();
         d.started = true;
@@ -303,6 +335,7 @@ export function Canvas() {
         }
       });
     } else if (d.type === 'garment') {
+      if (garmentById(d.gid)?.type === 'top') return; // tops ride the body
       const w = world(e);
       const dx = w.x - d.last.x, dy = w.y - d.last.y;
       if (!d.started) {
@@ -342,9 +375,7 @@ export function Canvas() {
       });
     } else if (d.type === 'cut') {
       const at = local(d.gid, e);
-      st.edit(d.gid, (g) => {
-        g.cropY = Math.min(GARMENT_H, Math.max(MIN_CROP_Y, at.y));
-      });
+      st.edit(d.gid, (g) => cutTo(g, at.y));
     } else if (d.type === 'paint') {
       const at = local(d.gid, e);
       if (Math.hypot(at.x - d.last.x, at.y - d.last.y) > 14) {
@@ -365,7 +396,10 @@ export function Canvas() {
   const sel = garmentById(selectedId);
   const showHandles = !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
   const handleR = 6 / view.k;
-  const selFit = showHandles && sel ? fitOf(sel) : null;
+  const selFit = showHandles && sel && sel.type !== 'top' ? fitOf(sel) : null;
+  const selTop = showHandles && sel && sel.type === 'top' ? topShape(torso, sel.points, stiffOf(sel.top)) : null;
+  // tucked tops go under everything else
+  const ordered = [...doc.garments.filter((g) => g.type === 'top' && g.top?.tuck), ...doc.garments.filter((g) => !(g.type === 'top' && g.top?.tuck))];
 
   const cursor =
     panning ? 'grabbing' : space || tool === 'hand' ? 'grab' : tool === 'move' ? 'default' : 'crosshair';
@@ -385,8 +419,13 @@ export function Canvas() {
       <g ref={worldRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
         <Artboard />
         {tab === 'sketch' && <CroquisView sex={doc.base.sex} view={doc.base.view} pose={doc.base.pose} rendered={rendered} skin={doc.base.skin} />}
-        {doc.garments.map((g) => {
+        {ordered.map((g) => {
           if (!g.visible) return null;
+          if (g.type === 'top') {
+            return (
+              <TopView key={g.id} g={g} t={torso} rendered={rendered} shading={doc.settings.shading} selectedText={g.id === selectedId ? selectedText : null} bust={doc.base.sex === 'female'} />
+            );
+          }
           const fit = fitOf(g);
           const common = {
             selectedText: g.id === selectedId ? selectedText : null,
@@ -436,10 +475,19 @@ export function Canvas() {
         {showHandles && sel && (
           <g>
             {sel.points.map((p0, i) => {
-              const fit = selFit ?? fitOf(sel);
-              const p = fit.g.points[fit.index[i]] ?? p0;
-              const t = sel.transform;
-              const x = t.x + p.x * t.scale, y = t.y + p.y * t.scale;
+              let x: number, y: number;
+              let p = p0;
+              if (selTop) {
+                const c: Vec = selTop.outline[selTop.index[i]] ?? topForward(torso, p0, stiffOf(sel.top));
+                x = c.x;
+                y = c.y;
+              } else {
+                const fit = selFit ?? fitOf(sel);
+                p = fit.g.points[fit.index[i]] ?? p0;
+                const t = sel.transform;
+                x = t.x + p.x * t.scale;
+                y = t.y + p.y * t.scale;
+              }
               return (
                 <g key={i}>
                   <circle cx={x} cy={y} r={handleR * 2.2} fill="transparent" data-kind="pt" data-i={i} data-gid={sel.id} style={{ cursor: tool === 'erase' ? 'crosshair' : 'grab' }} />

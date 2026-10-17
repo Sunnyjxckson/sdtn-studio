@@ -15,7 +15,7 @@ export function PatternView() {
   const sheetRef = useRef<SVGGElement>(null);
   const drag = useRef<{ sx: number; sy: number; vx: number; vy: number } | null>(null);
   const [v, setV] = useState<V>({ x: 0, y: 0, k: 0.5 });
-  const sheet = useMemo(() => (g ? buildSheet(g) : null), [g]);
+  const sheet = useMemo(() => (g && g.type !== 'top' ? buildSheet(g) : null), [g]);
   const fitted = useRef<string>('');
 
   const fit = () => {
@@ -76,7 +76,7 @@ export function PatternView() {
       <div className="patternbar">
         <span className="toolname">Pattern</span>
         <span className="muted small toolhelp">
-          {g ? `${g.name}. Pieces follow your fit, rise, length and leg opening. 1 in = 96 px.` : 'Add jeans from the Library to see the pattern.'}
+          {g && g.type === 'top' ? `${g.name}. Pattern pieces for tops come next. Select jeans to see theirs.` : g ? `${g.name}. Pieces follow your fit, rise, length and leg opening. 1 in = 96 px.` : 'Add jeans from the Library to see the pattern.'}
         </span>
         <div className="barend">
           <button className="btn" style={{ padding: '6px 12px' }} onClick={fit} disabled={!sheet}>Fit</button>
@@ -103,7 +103,7 @@ export function PatternView() {
             </g>
           </svg>
         ) : (
-          <div className="loading muted">No jeans yet. Pick a block from the Library.</div>
+          <div className="loading muted">{g && g.type === 'top' ? 'Pattern pieces for tops are on the way.' : 'No jeans yet. Pick a block from the Library.'}</div>
         )}
       </div>
     </div>

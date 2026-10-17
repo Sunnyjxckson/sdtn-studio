@@ -11,6 +11,7 @@ import {
   type FabricKind,
   type Measure,
   createJeans,
+  createTop,
   HOLE_SIZES,
   MIN_POINTS,
   TEXT_SIZES,
@@ -25,6 +26,7 @@ import {
   type WashName,
 } from './model/garment';
 import { placeOnCroquis } from './model/placement';
+import { buildTopPoints, type TopOpts } from './model/top';
 import { newId } from './model/garment';
 
 export type Tool = 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'note' | 'hand';
@@ -83,6 +85,8 @@ interface State {
   setNoteText: (id: string, t: string) => void;
   removeNote: (id: string) => void;
   addJeans: (fit: Fit) => void;
+  addTop: (o: TopOpts) => void;
+  setTop: (id: string, patch: Partial<TopOpts>) => void;
   removeGarment: (id: string) => void;
   toggleVisible: (id: string) => void;
   moveLayer: (id: string, dir: 1 | -1) => void;
@@ -274,6 +278,27 @@ export const useStore = create<State>()(
           s.tool = 'move';
         });
       },
+      addTop: (o) => {
+        const g = createTop(o);
+        get().checkpoint();
+        set((s) => {
+          s.doc.garments.push(g);
+          s.selectedId = g.id;
+          s.selectedText = null;
+          s.tool = 'move';
+        });
+      },
+      setTop: (id, patch) =>
+        step((d) => {
+          const g = findG(d, id);
+          if (!g || !g.top) return;
+          Object.assign(g.top, patch);
+          if (patch.length && patch.tuck === undefined) g.top.tuck = false;
+          g.points = buildTopPoints(g.top);
+          const n = g.top.block === 'Tank' ? 'tank' : g.top.block === 'Tee' ? 'tee' : 'long sleeve';
+          g.name = `${g.top.fit} ${n}`;
+          if (patch.block) g.fabric = patch.block === 'Tank' ? 'Rib' : 'Jersey';
+        }),
       removeGarment: (id) => {
         get().checkpoint();
         set((s) => {

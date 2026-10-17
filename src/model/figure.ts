@@ -785,6 +785,81 @@ export function poseUnwarp(rig: PoseRigOut, p: Vec): Vec {
   return q;
 }
 
+// ---------- torso landmarks, for fitting tops ----------
+export interface ArmProf {
+  /** Shoulder joint, elbow, wrist. */
+  bones: [Vec, Vec, Vec];
+  /** Half width of the arm at t along the upper arm (0..1) and forearm (1..2). */
+  half: [number, number][];
+}
+export interface TorsoProfile {
+  /** Neck base corners, screen left and right. */
+  neck: [Vec, Vec];
+  /** Shoulder tips. */
+  tip: [Vec, Vec];
+  /** Underarm points where the arm leaves the body. */
+  armpit: [Vec, Vec];
+  /** Body side lines from the armpit down past the hip (y ascending). */
+  sides: [Vec[], Vec[]];
+  waistY: number;
+  hipY: number;
+  arms: [ArmProf, ArmProf];
+  /** Rough body measurements in inches, for the top spec. */
+  inches: { chest: number; shoulder: number; torso: number; arm: number };
+}
+
+const STOCK_HALF: [number, number][] = [[0, 15], [0.5, 14], [1, 11.5], [1.5, 10], [2, 7.5]];
+const stockSide = (sign: number): Vec[] => {
+  const xs: [number, number, number][] = [[258, 242.4, 357.7], [270, 245.2, 354.9], [282, 248, 352.1], [294, 250.7, 349.4], [306, 253.4, 346.7], [318, 255.9, 344.2], [330, 258.6, 341.5], [342, 257.8, 342.3], [354, 252.5, 347.6], [366, 247, 353.1], [378, 241.7, 358.4], [390, 237.7, 362.4], [402, 234.7, 365.4], [414, 232.4, 367.7], [426, 230.4, 369.7], [438, 229, 371.1], [450, 228.4, 371.6]];
+  return xs.map(([y, l, r]) => P(sign < 0 ? l : r, y));
+};
+const STOCK_TORSO: TorsoProfile = {
+  neck: [P(281, 170), P(319, 170)],
+  tip: [P(217, 200), P(383, 200)],
+  armpit: [P(242, 256), P(358, 256)],
+  sides: [stockSide(-1), stockSide(1)],
+  waistY: 343,
+  hipY: 445,
+  arms: [
+    { bones: [P(228, 215), P(220, 345), P(174, 468)], half: STOCK_HALF },
+    { bones: [P(372, 215), P(382, 345), P(398, 468)], half: STOCK_HALF },
+  ],
+  inches: { chest: 34, shoulder: 15, torso: 16, arm: 23 },
+};
+
+const torsoCache = new Map<string, TorsoProfile>();
+
+export function torsoProfile(sex: Sex, pose: PoseId): TorsoProfile {
+  if (usesStock(sex, pose)) return STOCK_TORSO;
+  const key = `${sex}:${pose}`;
+  const hit = torsoCache.get(key);
+  if (hit) return hit;
+  const r = buildRig(sex, pose);
+  const b = r.b;
+  const sh = (sign: number) => b.shoulder.map((p) => torsoPt(r, P(p.x * sign, p.y)));
+  const sd = (sign: number) => b.side.map((p) => torsoPt(r, P(p.x * sign, p.y)));
+  const shL = sh(1), shR = sh(-1);
+  const half = (s: number): [number, number][] => {
+    const up = b.upperArm.map(([t, o, n]) => [t, (o + (n || o)) / 2] as [number, number]);
+    const fo = b.foreArm.map(([t, o, n]) => [1 + t, (o + n) / 2] as [number, number]);
+    void s;
+    return [[0, up[0][1] * 1.05], ...up, ...fo];
+  };
+  const male = sex === 'male';
+  const out: TorsoProfile = {
+    neck: [shL[0], shR[0]],
+    tip: [shL[shL.length - 1], shR[shR.length - 1]],
+    armpit: [torsoPt(r, P(b.side[0].x + 2, b.side[0].y - 6)), torsoPt(r, P(-b.side[0].x - 2, b.side[0].y - 6))],
+    sides: [sd(1), sd(-1)],
+    waistY: torsoPt(r, P(0, b.waistY)).y,
+    hipY: torsoPt(r, P(0, 430)).y,
+    arms: [0, 1].map((s) => ({ bones: [r.arm[s][0], r.arm[s][1], r.arm[s][2]] as [Vec, Vec, Vec], half: half(s) })) as [ArmProf, ArmProf],
+    inches: male ? { chest: 38, shoulder: 17.5, torso: 18, arm: 25 } : { chest: 34, shoulder: 15, torso: 16, arm: 23 },
+  };
+  torsoCache.set(key, out);
+  return out;
+}
+
 export const IDENTITY_RIG: PoseRigOut = { identity: true, regions: [] };
 
 const inRect = (r: Region['rect'], p: Vec) => p.x >= r.x0 && p.x < r.x1 && p.y >= r.y0 && p.y < r.y1;

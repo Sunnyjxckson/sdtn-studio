@@ -16,6 +16,9 @@ import {
   type HoleSize,
 } from '../model/garment';
 import { Icon } from './icons';
+import { computeTopSpec, NECKS, TOP_BLOCKS, TOP_FITS, TOP_LENGTHS } from '../model/top';
+import { torsoProfile } from '../model/figure';
+import { TOP_FABRICS, type Garment } from '../model/garment';
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -73,6 +76,7 @@ export function RightPanel() {
       </aside>
     );
   }
+  if (g.type === 'top') return <TopPanel g={g} />;
   const spec = computeSpec(g);
   const p = g.points;
   const hemY = Math.max(findPoint(p, 'hemLo').y, findPoint(p, 'hemLi').y);
@@ -209,6 +213,95 @@ export function RightPanel() {
             ))}
           </tbody>
         </table>
+      </section>
+    </aside>
+  );
+}
+
+function TopPanel({ g }: { g: Garment }) {
+  const a = useStore.getState;
+  const tool = useStore((s) => s.tool);
+  const selText = useStore((s) => s.selectedText);
+  const holeSize = useStore((s) => s.holeSize);
+  const base = useStore((s) => s.doc.base);
+  const o = g.top!;
+  const spec = computeTopSpec(g.points, torsoProfile(base.sex, base.pose));
+  const text = selText != null ? g.texts[selText] : undefined;
+  return (
+    <aside className="panel right">
+      <div className="titlerow">
+        <span className="title">{g.name}</span>
+        <button className="iconbtn" aria-label="Delete garment" title="Delete garment" onClick={() => a().removeGarment(g.id)}>
+          <Icon name="trash" size={16} />
+        </button>
+      </div>
+      {text && selText != null && (
+        <section className="group textbox">
+          <label className="label" htmlFor="seltext">SELECTED TEXT</label>
+          <input id="seltext" type="text" value={text.t} onChange={(e) => a().setTextValue(g.id, selText, e.target.value)} />
+          <div className="opts">
+            {Object.entries(TEXT_SIZES).map(([name, size]) => (
+              <button key={name} className={text.size === size ? 'opt on' : 'opt'} onClick={() => a().setTextSize(g.id, selText, size)}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {tool === 'hole' && (
+        <Group label="HOLE SIZE">
+          <div className="opts">
+            {(Object.keys(HOLE_SIZES) as HoleSize[]).map((n) => (
+              <button key={n} className={holeSize === n ? 'opt on' : 'opt'} onClick={() => a().setHoleSize(n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </Group>
+      )}
+      <Group label="BLOCK">
+        <Options names={TOP_BLOCKS} value={o.block} onPick={(n) => a().setTop(g.id, { block: n })} />
+      </Group>
+      <Group label="FIT">
+        <Options names={TOP_FITS} value={o.fit} onPick={(n) => a().setTop(g.id, { fit: n })} />
+        <Options names={TOP_LENGTHS} value={o.length} onPick={(n) => a().setTop(g.id, { length: n })} />
+        <Options names={NECKS} value={o.neck} onPick={(n) => a().setTop(g.id, { neck: n })} />
+        <div className="opts">
+          <button className={o.tuck ? 'opt on' : 'opt'} onClick={() => a().setTop(g.id, { tuck: !o.tuck })}>
+            Tucked in
+          </button>
+        </div>
+        <p className="hint">These reset the outline to fit the body again. Drag the dots to change it.</p>
+      </Group>
+      <Group label="FABRIC">
+        <div className="grid3">
+          {TOP_FABRICS.map((n) => (
+            <button key={n} className={n === g.fabric ? 'opt on' : 'opt'} onClick={() => a().setFabric(g.id, n)}>
+              {n}
+            </button>
+          ))}
+        </div>
+      </Group>
+      <Group label="COLOR">
+        <div className="washes">
+          {WASH_NAMES.map((n) => (
+            <button key={n} className={n === g.wash ? 'wash on' : 'wash'} style={{ background: WASHES[n] }} aria-label={n} title={n} onClick={() => a().setWash(g.id, n)} />
+          ))}
+        </div>
+      </Group>
+      <section className="group spec">
+        <h3 className="label">SPEC FROM YOUR DRAWING</h3>
+        <table data-testid="spec">
+          <tbody>
+            {spec.map((r) => (
+              <tr key={r.k}>
+                <td className="muted">{r.k}</td>
+                <td className="mono">{r.v}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="hint">Sample size, measured against the croquis.</p>
       </section>
     </aside>
   );

@@ -1,17 +1,20 @@
 // Garment model and pure geometry helpers. Garment space is 300 x 516.
 // Ported from the Edit mockup: build(), outline paths, details, live spec.
 
+import { buildTopPoints, type TopOpts } from './top';
+
 export const GARMENT_W = 300;
 export const GARMENT_H = 516;
 
-export type GarmentType = 'jeans';
+export type GarmentType = 'jeans' | 'top';
 export type Fit = 'Skinny' | 'Slim' | 'Straight' | 'Flare' | 'Baggy' | 'Wide';
 export type Rise = 'Low' | 'Mid' | 'High';
 export type WaistKind = 'Regular' | 'Belt loops' | 'Drawcord' | 'Knee strap';
 export type PocketKind = 'Scoop' | 'Coin' | 'Cargo' | 'None';
-export type WashName = 'Raw indigo' | 'Washed black' | 'Black' | 'Crimson' | 'Grey' | 'Bleached' | 'Ecru';
-export type FabricKind = 'Denim' | 'Plaid' | 'Houndstooth' | 'Pinstripe' | 'Polka dot' | 'Leather' | 'Satin' | 'Knit';
+export type WashName = 'Raw indigo' | 'Washed black' | 'Black' | 'Crimson' | 'Grey' | 'Bleached' | 'Ecru' | 'White' | 'Heather' | 'Navy' | 'Olive' | 'Cream';
+export type FabricKind = 'Denim' | 'Plaid' | 'Houndstooth' | 'Pinstripe' | 'Polka dot' | 'Leather' | 'Satin' | 'Knit' | 'Jersey' | 'Rib';
 export const FABRIC_NAMES: FabricKind[] = ['Denim', 'Plaid', 'Houndstooth', 'Pinstripe', 'Polka dot', 'Leather', 'Satin', 'Knit'];
+export const TOP_FABRICS: FabricKind[] = ['Jersey', 'Rib', 'Knit', 'Satin', 'Leather', 'Plaid', 'Pinstripe', 'Polka dot', 'Denim'];
 
 /** Pixels per inch in garment space: vertical measures, and leg widths. */
 export const PX_IN_V = 9.4;
@@ -21,6 +24,8 @@ export interface Pt {
   x: number;
   y: number;
   key?: string;
+  /** Tops only: which space the point lives in (a sleeve point rides the arm). */
+  r?: 'armL' | 'armR';
 }
 export interface Hole {
   x: number;
@@ -61,6 +66,8 @@ export interface Garment {
   cropY: number | null;
   transform: Transform;
   visible: boolean;
+  /** Tops only. */
+  top?: TopOpts;
 }
 
 export const FIT_NAMES: Fit[] = ['Skinny', 'Slim', 'Straight', 'Flare', 'Baggy', 'Wide'];
@@ -76,6 +83,11 @@ export const WASHES: Record<WashName, string> = {
   Grey: '#8A8F96',
   Bleached: '#9DB4CC',
   Ecru: '#E2D9C3',
+  White: '#F1EFEA',
+  Heather: '#9A9A98',
+  Navy: '#25304A',
+  Olive: '#5B5E3E',
+  Cream: '#E8DFCB',
 };
 export const WASH_NAMES = Object.keys(WASHES) as WashName[];
 
@@ -144,6 +156,30 @@ export function createJeans(fit: Fit = 'Straight', rise: Rise = 'Mid'): Garment 
     cropY: null,
     transform: { x: 0, y: 0, scale: 1 },
     visible: true,
+  };
+}
+
+export function createTop(o: TopOpts): Garment {
+  const name = o.block === 'Tank' ? 'tank' : o.block === 'Tee' ? 'tee' : 'long sleeve';
+  return {
+    id: newId(),
+    name: `${o.fit} ${name}`,
+    type: 'top',
+    block: o.block,
+    fit: 'Straight',
+    rise: 'Mid',
+    points: buildTopPoints(o),
+    parts: { waist: 'Regular', pocket: 'None' },
+    wash: 'White',
+    fabric: o.block === 'Tank' ? 'Rib' : 'Jersey',
+    fabricScale: 1,
+    holes: [],
+    distress: [],
+    texts: [],
+    cropY: null,
+    transform: { x: 0, y: 0, scale: 1 },
+    visible: true,
+    top: o,
   };
 }
 
@@ -257,7 +293,7 @@ export function holeThreads(h: Hole): string {
 }
 
 export function isDarkWash(w: WashName): boolean {
-  return w !== 'Grey' && w !== 'Bleached' && w !== 'Ecru';
+  return !['Grey', 'Bleached', 'Ecru', 'White', 'Heather', 'Cream'].includes(w);
 }
 
 /** Index to insert at, plus the nearest point on the outline, for the Add point tool. */
