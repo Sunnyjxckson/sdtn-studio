@@ -585,39 +585,81 @@ const rigCache = new Map<string, PoseRigOut>();
  * the hips ride the pelvis, each thigh and shin rides its bone. Rises and legs are stretched to
  * the 9-head proportions, and widths are scaled by ACROSS.
  */
+/** What the garment fit needs from a croquis: the pelvis frame and the leg chains. */
+interface Skel {
+  Pv: Frame;
+  turn: number;
+  crotchY: number;
+  hipJY: number;
+  /** [hip joint, knee, ankle] per leg, screen left first. */
+  legs: [Vec[], Vec[]];
+  /** Back leg first. */
+  legOrder: number[];
+  /** Ankle height in the stand pose, so the hem sits the same distance past the ankle. */
+  standAnkleY: [number, number];
+}
+
+/** Landmarks read off the licensed female walking croquis (front and back share them). */
+const STOCK_WALK: Skel = {
+  Pv: { o: P(300, 446), a: 0 },
+  turn: 0,
+  crotchY: 458,
+  hipJY: 446,
+  legs: [
+    [P(264, 446), P(281, 658), P(312, 884)],
+    [P(336, 446), P(335, 640), P(324, 790)],
+  ],
+  legOrder: [1, 0],
+  standAnkleY: [884, 884],
+};
+
+/** True when this sex and pose use the licensed stock artwork instead of the built figure. */
+export const usesStock = (sex: Sex, pose: PoseId) => sex === 'female' && pose === 'walk';
+
+function skeletonOf(sex: Sex, pose: PoseId): Skel {
+  if (usesStock(sex, pose)) return STOCK_WALK;
+  const r = buildRig(sex, pose);
+  const stand = buildRig(sex, 'stand');
+  return {
+    Pv: r.Pv,
+    turn: r.pose.turn,
+    crotchY: r.b.crotchY,
+    hipJY: r.b.hipJY,
+    legs: [r.leg[0].slice(0, 3), r.leg[1].slice(0, 3)],
+    legOrder: r.pose.order.filter((p) => p === 'legL' || p === 'legR').map((p) => (p === 'legL' ? 0 : 1)),
+    standAnkleY: [stand.leg[0][2].y, stand.leg[1][2].y],
+  };
+}
+
 export function poseRig(sex: Sex, pose: PoseId, waistY: number, hemY: number): PoseRigOut {
   const key = `${sex}:${pose}:${waistY}:${hemY}`;
   const hit = rigCache.get(key);
   if (hit) return hit;
-  const r = buildRig(sex, pose);
-  const b = r.b;
+  const k = skeletonOf(sex, pose);
   const sc = (hemY - waistY) / (REF.hem - REF.top);
   const gy = (y: number) => waistY + (y - REF.top) * sc;
   const ref = { crotch: gy(REF.crotch), knee: gy(REF.knee), hem: hemY };
-  const t = r.pose.turn;
+  const t = k.turn;
   const pelvis = (side: number): Mat => {
     const sx = side < 0 ? 1 - 0.5 * t : 1 + 0.04 * t;
-    const ay = (b.crotchY - waistY) / (ref.crotch - waistY);
+    const ay = (k.crotchY - waistY) / (ref.crotch - waistY);
     const toStand = matMul(mT(CX, waistY), matMul(mS(ACROSS.pelvis, ay), mT(-CX, -waistY)));
-    const toPose = matMul(mT(r.Pv.o.x, r.Pv.o.y), matMul(mR(r.Pv.a), matMul(mS(sx, 1), mT(-CX, -b.hipJY))));
+    const toPose = matMul(mT(k.Pv.o.x, k.Pv.o.y), matMul(mR(k.Pv.a), matMul(mS(sx, 1), mT(-CX, -k.hipJY))));
     return matMul(toPose, toStand);
   };
   const regions: Region[] = [];
   const pad = 6;
   regions.push({ id: 'pL', rect: { x0: -BIG, y0: -BIG, x1: CX, y1: ref.crotch }, clip: { x0: -BIG, y0: -BIG, x1: CX + 0.5, y1: ref.crotch + pad }, m: pelvis(-1) });
   regions.push({ id: 'pR', rect: { x0: CX, y0: -BIG, x1: BIG, y1: ref.crotch }, clip: { x0: CX - 0.5, y0: -BIG, x1: BIG, y1: ref.crotch + pad }, m: pelvis(1) });
-  const legOrder = r.pose.order.filter((p) => p === 'legL' || p === 'legR').map((p) => (p === 'legL' ? 0 : 1));
-  const stand = buildRig(sex, 'stand');
-  legOrder.forEach((s) => {
+  k.legOrder.forEach((s) => {
     const sign = s === 0 ? -1 : 1;
-    const c = r.leg[s];
-    const thighLen = b.leg[0];
+    const c = k.legs[s];
+    const thighLen = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y) || 1;
     // body thigh point level with the crotch, and the hem point past the ankle
-    const tTop = (b.crotchY - b.hipJY) / thighLen;
-    const top1 = lerpv(c[0], c[1], tTop);
+    const top1 = lerpv(c[0], c[1], (k.crotchY - k.hipJY) / thighLen);
     const shinDir = P(c[2].x - c[1].x, c[2].y - c[1].y);
     const shinLen = Math.hypot(shinDir.x, shinDir.y) || 1;
-    const extra = hemY - stand.leg[s][2].y;
+    const extra = hemY - k.standAnkleY[s];
     const hem1 = addv(c[2], scl(shinDir, extra / shinLen));
     const top0 = P(CX + sign * REF.legTop * sc, ref.crotch);
     const knee0 = P(CX + sign * REF.legKnee * sc, ref.knee);
