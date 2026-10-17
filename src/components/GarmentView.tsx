@@ -9,7 +9,7 @@ import {
   type Garment,
 } from '../model/garment';
 import { mix } from '../model/color';
-import { fadeSpots, foldStrokes, highlightStrokes, whiskerStrokes } from '../model/shading';
+import { drapeFolds, fadeSpots, foldStrokes, highlightStrokes, whiskerStrokes } from '../model/shading';
 import { polyPath, ripFray, ripPoly, ripThreads, wornPatch } from '../model/rips';
 import { FabricDefs, fabricId, hasOverlay, overlayId } from './FabricDefs';
 
@@ -145,6 +145,31 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
               {g.fabric === 'Denim' && (
                 <rect x={BIG.x} y={BIG.y} width={BIG.w} height={BIG.h} filter={`url(#gr-${uid})`} opacity={0.32} style={{ mixBlendMode: 'overlay' }} />
               )}
+              {(() => {
+                const xs = g.points.map((p) => p.x);
+                const x0 = Math.min(...xs), x1 = Math.max(...xs);
+                const df = drapeFolds(g);
+                return (
+                  <>
+                    <linearGradient id={`lt-${uid}`} gradientUnits="userSpaceOnUse" x1={x0} x2={x1} y1={0} y2={0}>
+                      <stop offset={0} stopColor="#fff" stopOpacity={0.1} />
+                      <stop offset={0.45} stopColor="#fff" stopOpacity={0} />
+                      <stop offset={1} stopColor="#000" stopOpacity={0.24} />
+                    </linearGradient>
+                    <rect x={BIG.x} y={BIG.y} width={BIG.w} height={BIG.h} fill={`url(#lt-${uid})`} />
+                    <g fill="none" stroke="#000" strokeLinecap="round" filter={`url(#wn-${uid})`}>
+                      {df.dark.map((s, i) => (
+                        <path key={i} d={s.d} strokeWidth={s.w} opacity={s.o} />
+                      ))}
+                    </g>
+                    <g fill="none" stroke="#fff" strokeLinecap="round" filter={`url(#wn-${uid})`}>
+                      {df.light.map((s, i) => (
+                        <path key={i} d={s.d} strokeWidth={s.w} opacity={s.o} />
+                      ))}
+                    </g>
+                  </>
+                );
+              })()}
               <g fill="#fff" filter={`url(#fd-${uid})`}>
                 {fadeSpots(g).map((s, i) => (
                   <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} opacity={s.o} />

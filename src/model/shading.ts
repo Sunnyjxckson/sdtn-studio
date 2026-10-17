@@ -39,9 +39,15 @@ export function foldStrokes(g: Garment): Stroke[] {
     }
   };
 
-  // knees
-  if (has(g, 'kneeLo', 'kneeLi')) across(findPoint(p, 'kneeLo'), findPoint(p, 'kneeLi'), findPoint(p, 'kneeLo').y - 4, 4, 11, 0.4, 0.35);
-  if (has(g, 'kneeRo', 'kneeRi')) across(findPoint(p, 'kneeRo'), findPoint(p, 'kneeRi'), findPoint(p, 'kneeRo').y - 4, 4, 11, 0.4, 0.35);
+  // knees: slim legs crease across the knee, loose legs mostly fall straight
+  const kn = (lo: string, li: string, ho: string, hi: string) => {
+    if (!has(g, lo, li)) return;
+    const L = legLoose(g, ho, hi);
+    const n = Math.round(4 * (1 - L * 0.75));
+    if (n > 0) across(findPoint(p, lo), findPoint(p, li), findPoint(p, lo).y - 4, n, 11, 0.4 - L * 0.15, 0.35);
+  };
+  kn('kneeLo', 'kneeLi', 'hemLo', 'hemLi');
+  kn('kneeRo', 'kneeRi', 'hemRo', 'hemRi');
 
   // crotch: strokes fanning up and out
   const cr = findPoint(p, 'crotch');
@@ -139,4 +145,43 @@ export function fadeSpots(g: Garment): Spot[] {
     out.push({ cx: knee.x, cy: knee.y - 6, rx: kw * 0.3, ry: 18, o: 0.14 });
   }
   return out;
+}
+
+/** How loose the leg is, 0 for skinny to 1 for wide, from the hem opening. */
+export function legLoose(g: Garment, lo: string, li: string): number {
+  if (!has(g, lo, li)) return 0;
+  return Math.max(0, Math.min(1, (Math.abs(findPoint(g.points, lo).x - findPoint(g.points, li).x) - 26) / 40));
+}
+
+/** Long soft drape folds that fall from the knee to the hem on looser legs. */
+export function drapeFolds(g: Garment): { dark: Stroke[]; light: Stroke[] } {
+  const r = rng(g.id + ':drape');
+  const p = g.points;
+  const dark: Stroke[] = [];
+  const light: Stroke[] = [];
+  for (const [ko, ki, ho, hi] of [['kneeLo', 'kneeLi', 'hemLo', 'hemLi'], ['kneeRo', 'kneeRi', 'hemRo', 'hemRi']] as const) {
+    if (!has(g, ko, ki, ho, hi)) continue;
+    const L = legLoose(g, ho, hi);
+    const count = 1 + Math.round(L * 3);
+    const K = [findPoint(p, ko), findPoint(p, ki)], H = [findPoint(p, ho), findPoint(p, hi)];
+    for (let k = 0; k < count; k++) {
+      const f = (k + 0.5 + (r() - 0.5) * 0.5) / count;
+      const top = { x: K[0].x + (K[1].x - K[0].x) * (0.3 + f * 0.4), y: K[0].y - 30 - r() * 50 };
+      const bot = { x: H[0].x + (H[1].x - H[0].x) * f, y: Math.max(H[0].y, H[1].y) - 4 };
+      const mid = { x: (top.x + bot.x) / 2 + (r() - 0.5) * 10, y: (top.y + bot.y) / 2 };
+      const d = `M${n1(top.x)},${n1(top.y)} Q${n1(mid.x)},${n1(mid.y)} ${n1(bot.x)},${n1(bot.y)}`;
+      dark.push({ d, w: 3 + L * 3, o: 0.12 + L * 0.12 });
+      light.push({ d: `M${n1(top.x + 4)},${n1(top.y + 10)} Q${n1(mid.x + 4)},${n1(mid.y)} ${n1(bot.x + 4)},${n1(bot.y - 6)}`, w: 2 + L * 2, o: 0.08 + L * 0.1 });
+    }
+    // break where the hem lands on the shoe
+    const hy = Math.max(H[0].y, H[1].y);
+    for (let k = 0; k < 2 + Math.round(L * 2); k++) {
+      const f = 0.2 + r() * 0.6;
+      const x = H[0].x + (H[1].x - H[0].x) * f;
+      const y = hy - 10 - k * 9 - r() * 4;
+      const span = Math.abs(H[1].x - H[0].x) * (0.18 + r() * 0.2);
+      dark.push({ d: `M${n1(x - span)},${n1(y + 3)} Q${n1(x)},${n1(y - 4)} ${n1(x + span)},${n1(y + 2)}`, w: 2.4, o: 0.2 });
+    }
+  }
+  return { dark, light };
 }

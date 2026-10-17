@@ -176,9 +176,36 @@ export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: 
   };
   const easeL = hipEase('hipL', 'l'), easeR = hipEase('hipR', 'r');
 
+  // looser legs hang under gravity: they fall straight down from the knee instead of following the shin
+  const loose = (lo: string, li: string) => {
+    const a = points.find((p) => p.key === lo), b = points.find((p) => p.key === li);
+    return a && b ? Math.max(0, Math.min(1, (Math.abs(a.x - b.x) - 26) / 40)) : 0;
+  };
+  const looseLeg = [loose('hemLo', 'hemLi'), loose('hemRo', 'hemRi')];
+  const drape = (w: Vec, s: number, inShin: boolean): Vec => {
+    const L = looseLeg[s];
+    if (!L) return w;
+    const [thigh, shin] = body.legs[s];
+    if (!thigh || !shin) return w;
+    const xAt = (a: Vec, b: Vec, y: number) => a.x + ((y - a.y) / (b.y - a.y || 1)) * (b.x - a.x);
+    const knee = thigh.b;
+    const thighOff = (thigh.a.x - knee.x) * 0.35 * L;
+    if (!inShin) {
+      const k = Math.max(0, Math.min(1, (w.y - thigh.a.y) / (knee.y - thigh.a.y || 1)));
+      return { x: w.x + (thigh.a.x - xAt(thigh.a, knee, w.y)) * 0.35 * L * k, y: w.y };
+    }
+    // loose legs are cut longer and fall over the foot
+    const y = knee.y + (w.y - knee.y) * (1 + 0.2 * L);
+    return { x: w.x + thighOff + (knee.x - xAt(knee, shin.b, w.y)) * 0.65 * L, y };
+  };
+
   const placed = pts.map(({ p, chain }) => {
     const q = toCanvas(p);
     let w = poseWarp(rig, q);
+    {
+      const r0 = regionOf(q);
+      if (r0 && !r0.id.startsWith('p')) w = drape(w, r0.id.endsWith('L') ? 0 : 1, r0.id.startsWith('s'));
+    }
     if (chain !== 'none' && chain !== 'waist' && chain !== 'hemR' && chain !== 'hemL') {
       const r = regionOf(q);
       if (r && (r.id === 'pL' || r.id === 'pR')) {
@@ -203,6 +230,18 @@ export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: 
     const u = j / (index[iWR] - index[iWL]);
     placed[i] = { ...placed[i], x: wl.x + (wr.x - wl.x) * u, y: wl.y + (wr.y - wl.y) * u + sag * 4 * u * (1 - u) };
   }
+  // hems curve round the leg opening
+  const hemCurve = (ia: number, ib: number) => {
+    const a = placed[ia], b = placed[ib];
+    const dip = Math.hypot(b.x - a.x, b.y - a.y) * 0.2;
+    for (let i = ia + 1, j = 1; i < ib; i++, j++) {
+      const u = j / (ib - ia);
+      placed[i] = { ...placed[i], x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u + dip * 4 * u * (1 - u) };
+    }
+  };
+  hemCurve(index[iHRo], index[iHRi]);
+  hemCurve(index[iHLi], index[iHLo]);
+
   // the body narrows above the waist, so the top of the band comes in with it
   const bandInset: [number, number] = [0, 0];
   {
