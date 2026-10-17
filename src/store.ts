@@ -1,10 +1,14 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Draft } from 'immer';
-import { emptyDoc, type Doc } from './model/doc';
-import type { Sex, View } from './model/croquis';
+import { emptyDoc, normalizeDoc, type Doc, type RenderMode } from './model/doc';
+import type { Note } from './model/note';
+import type { Sex, SkinId, View } from './model/croquis';
 import {
+  applyMeasure,
   buildPoints,
+  type FabricKind,
+  type Measure,
   createJeans,
   HOLE_SIZES,
   MIN_POINTS,
@@ -20,9 +24,10 @@ import {
   type WashName,
 } from './model/garment';
 import { placeOnCroquis } from './model/placement';
+import { newId } from './model/garment';
 
-export type Tool = 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'hand';
-export type Tab = 'sketch' | 'flats';
+export type Tool = 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'note' | 'hand';
+export type Tab = 'sketch' | 'flats' | 'pattern';
 
 export const HISTORY_LIMIT = 200;
 
@@ -44,6 +49,7 @@ interface State {
   tab: Tab;
   selectedId: string | null;
   selectedText: number | null;
+  selectedNote: string | null;
   holeSize: HoleSize;
   view: Viewport;
 
@@ -60,11 +66,21 @@ interface State {
   setTab: (t: Tab) => void;
   select: (id: string | null) => void;
   selectText: (i: number | null) => void;
+  selectNote: (id: string | null) => void;
   setHoleSize: (s: HoleSize) => void;
   setView: (v: Viewport) => void;
 
   // document edits that create their own undo step
-  setBase: (b: { sex?: Sex; view?: View }) => void;
+  setBase: (b: { sex?: Sex; view?: View; skin?: SkinId }) => void;
+  setRender: (r: RenderMode) => void;
+  setShading: (on: boolean) => void;
+  setFabric: (id: string, f: FabricKind) => void;
+  setFabricScale: (id: string, v: number) => void;
+  setMeasure: (id: string, m: Measure, inches: number) => void;
+  addNote: (x: number, y: number) => string;
+  editNote: (id: string, fn: (n: Draft<Note>) => void) => void;
+  setNoteText: (id: string, t: string) => void;
+  removeNote: (id: string) => void;
   addJeans: (fit: Fit) => void;
   removeGarment: (id: string) => void;
   toggleVisible: (id: string) => void;
@@ -107,6 +123,7 @@ export const useStore = create<State>()(
       tab: 'sketch',
       selectedId: null,
       selectedText: null,
+      selectedNote: null,
       holeSize: 'M',
       view: { x: 0, y: 0, k: 1 },
 
@@ -128,6 +145,7 @@ export const useStore = create<State>()(
           s.doc = prev;
           s.coalesceKey = null;
           s.selectedText = null;
+          if (s.selectedNote && !prev.notes.some((n) => n.id === s.selectedNote)) s.selectedNote = null;
           if (s.selectedId && !prev.garments.some((g) => g.id === s.selectedId)) s.selectedId = null;
         }),
       redo: () =>
@@ -138,13 +156,14 @@ export const useStore = create<State>()(
           s.doc = next;
           s.coalesceKey = null;
           s.selectedText = null;
+          if (s.selectedNote && !next.notes.some((n) => n.id === s.selectedNote)) s.selectedNote = null;
           if (s.selectedId && !next.garments.some((g) => g.id === s.selectedId)) s.selectedId = null;
         }),
 
       hydrate: (doc, selectedId) =>
         set((s) => {
           if (doc) {
-            s.doc = doc;
+            s.doc = normalizeDoc(doc);
             s.selectedId = selectedId && doc.garments.some((g) => g.id === selectedId) ? selectedId : null;
           }
           s.ready = true;
@@ -162,10 +181,19 @@ export const useStore = create<State>()(
         set((s) => {
           if (s.selectedId !== id) s.selectedText = null;
           s.selectedId = id;
+          if (id) s.selectedNote = null;
         }),
       selectText: (i) =>
         set((s) => {
           s.selectedText = i;
+        }),
+      selectNote: (id) =>
+        set((s) => {
+          s.selectedNote = id;
+          if (id) {
+            s.selectedId = null;
+            s.selectedText = null;
+          }
         }),
       setHoleSize: (h) =>
         set((s) => {
@@ -177,6 +205,61 @@ export const useStore = create<State>()(
         }),
 
       setBase: (b) => step((d) => void Object.assign(d.base, b)),
+
+      setRender: (r) => step((d) => void (d.settings.render = r)),
+      setShading: (on) => step((d) => void (d.settings.shading = on)),
+      setFabric: (id, f) =>
+        step((d) => {
+          const g = findG(d, id);
+          if (g) g.fabric = f;
+        }),
+      setFabricScale: (id, v) =>
+        step(
+          (d) => {
+            const g = findG(d, id);
+            if (g) g.fabricScale = v;
+          },
+          `fabscale:${id}`,
+        ),
+      setMeasure: (id, m, inches) =>
+        step(
+          (d) => {
+            const g = findG(d, id);
+            if (g) applyMeasure(g, m, inches);
+          },
+          `measure:${id}:${m}`,
+        ),
+      addNote: (x, y) => {
+        const id = newId();
+        get().checkpoint();
+        set((s) => {
+          s.doc.notes.push({ id, x, y, text: 'note', tx: x - 40, ty: y + 70 });
+          s.selectedNote = id;
+          s.selectedId = null;
+          s.selectedText = null;
+        });
+        return id;
+      },
+      editNote: (id, fn) =>
+        set((s) => {
+          const n = s.doc.notes.find((x) => x.id === id);
+          if (n) fn(n);
+        }),
+      setNoteText: (id, t) =>
+        step(
+          (d) => {
+            const n = d.notes.find((x) => x.id === id);
+            if (n) n.text = t;
+          },
+          `note:${id}`,
+        ),
+      removeNote: (id) => {
+        get().checkpoint();
+        set((s) => {
+          s.doc.notes = s.doc.notes.filter((n) => n.id !== id);
+          if (s.selectedNote === id) s.selectedNote = null;
+        });
+      },
 
       addJeans: (fit) => {
         const g = createJeans(fit, 'Mid');

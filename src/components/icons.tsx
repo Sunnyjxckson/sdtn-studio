@@ -1,5 +1,5 @@
 export type IconName =
-  | 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'hand'
+  | 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'note' | 'hand'
   | 'undo' | 'redo' | 'eye' | 'eyeoff' | 'up' | 'down' | 'trash' | 'plus' | 'minus' | 'fit';
 
 const PATHS: Record<IconName, string> = {
@@ -10,6 +10,7 @@ const PATHS: Record<IconName, string> = {
   hole: 'M10,10 m-6,0 a6,4 0 1,0 12,0 a6,4 0 1,0 -12,0 M5,9 H15 M5,11 H15',
   distress: 'M3,8 L5,6 L7,8 L9,6 L11,8 L13,6 L15,8 L17,6 M3,13 L5,11 L7,13 L9,11 L11,13 L13,11 L15,13',
   text: 'M4,5 H16 M10,5 V16',
+  note: 'M4,16 Q6,6 10,10 T16,4 M13,4 H16 V7',
   hand: 'M10,3 V17 M3,10 H17 M10,3 L8,5 M10,3 L12,5 M10,17 L8,15 M10,17 L12,15 M3,10 L5,8 M3,10 L5,12 M17,10 L15,8 M17,10 L15,12',
   undo: 'M7,5 L3,9 L7,13 M3,9 H12 Q17,9 17,13 Q17,16 13,16',
   redo: 'M13,5 L17,9 L13,13 M17,9 H8 Q3,9 3,13 Q3,16 7,16',

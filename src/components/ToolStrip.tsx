@@ -9,6 +9,7 @@ export const TOOLS: { id: Tool; title: string; key: string; icon: IconName; help
   { id: 'hole', title: 'Hole', key: 'O', icon: 'hole', help: 'Click the garment to punch a hole.' },
   { id: 'distress', title: 'Distress brush', key: 'D', icon: 'distress', help: 'Click or drag on the garment to fray it.' },
   { id: 'text', title: 'Text', key: 'T', icon: 'text', help: 'Click the garment to place text. Drag it to move.' },
+  { id: 'note', title: 'Note', key: 'N', icon: 'note', help: 'Click empty canvas to place a handwritten note with an arrow.' },
   { id: 'hand', title: 'Hand', key: 'H', icon: 'hand', help: 'Drag to pan. Hold space with any tool to pan.' },
 ];
 

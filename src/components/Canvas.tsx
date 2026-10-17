@@ -5,12 +5,15 @@ import { clientToLocal } from '../svgCoords';
 import { fitToArtboard, setCanvasSize, zoomBy } from '../viewport';
 import { Artboard, CroquisView } from './CroquisView';
 import { GarmentView } from './GarmentView';
+import { notePaths } from '../model/note';
 
 type Drag =
   | { type: 'pan'; sx: number; sy: number; vx: number; vy: number }
   | { type: 'pt'; gid: string; i: number; started: boolean }
   | { type: 'garment'; gid: string; last: { x: number; y: number }; started: boolean }
   | { type: 'text'; gid: string; i: number; started: boolean }
+  | { type: 'note'; id: string; last: { x: number; y: number }; started: boolean }
+  | { type: 'tip'; id: string; started: boolean }
   | { type: 'cut'; gid: string }
   | { type: 'paint'; gid: string; last: { x: number; y: number } };
 
@@ -29,6 +32,7 @@ export function Canvas() {
   const view = useStore((s) => s.view);
   const selectedId = useStore((s) => s.selectedId);
   const selectedText = useStore((s) => s.selectedText);
+  const selectedNote = useStore((s) => s.selectedNote);
   const ready = useStore((s) => s.ready);
 
   // size tracking and first fit
@@ -122,6 +126,29 @@ export function Canvas() {
     const idx = Number(hit?.getAttribute('data-i') ?? -1);
     const t = st.tool;
 
+    // notes and their arrow tips
+    if (kind === 'tip') {
+      drag.current = { type: 'tip', id: hit?.getAttribute('data-id') ?? '', started: false };
+      return;
+    }
+    if (kind === 'note') {
+      const id = hit?.getAttribute('data-id') ?? '';
+      if (t === 'erase') {
+        st.removeNote(id);
+      } else {
+        st.selectNote(id);
+        if (t === 'move' || t === 'note') drag.current = { type: 'note', id, last: world(e), started: false };
+      }
+      return;
+    }
+    if (t === 'note') {
+      if (kind !== 'garment') {
+        const w = world(e);
+        st.addNote(w.x, w.y);
+      }
+      return;
+    }
+
     // Selecting: any tool lets you pick another garment first.
     if (gid && gid !== st.selectedId && kind !== 'pt') {
       st.select(gid);
@@ -142,6 +169,7 @@ export function Canvas() {
         drag.current = { type: 'garment', gid, last: world(e), started: false };
       } else {
         st.select(null);
+        st.selectNote(null);
       }
       return;
     }
@@ -252,6 +280,31 @@ export function Canvas() {
         g.transform.x += dx;
         g.transform.y += dy;
       });
+    } else if (d.type === 'note') {
+      const w = world(e);
+      const dx = w.x - d.last.x, dy = w.y - d.last.y;
+      if (!d.started) {
+        if (Math.hypot(dx, dy) < 3) return;
+        st.checkpoint();
+        d.started = true;
+      }
+      d.last = w;
+      st.editNote(d.id, (n) => {
+        n.x += dx;
+        n.y += dy;
+        n.tx += dx;
+        n.ty += dy;
+      });
+    } else if (d.type === 'tip') {
+      const w = world(e);
+      if (!d.started) {
+        st.checkpoint();
+        d.started = true;
+      }
+      st.editNote(d.id, (n) => {
+        n.tx = w.x;
+        n.ty = w.y;
+      });
     } else if (d.type === 'cut') {
       const at = local(d.gid, e);
       st.edit(d.gid, (g) => {
@@ -273,6 +326,7 @@ export function Canvas() {
     setPanning(false);
   };
 
+  const rendered = doc.settings.render === 'rendered';
   const sel = garmentById(selectedId);
   const showHandles = !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
   const handleR = 6 / view.k;
@@ -294,10 +348,37 @@ export function Canvas() {
     >
       <g ref={worldRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
         <Artboard />
-        {tab === 'sketch' && <CroquisView sex={doc.base.sex} view={doc.base.view} />}
+        {tab === 'sketch' && <CroquisView sex={doc.base.sex} view={doc.base.view} rendered={rendered} skin={doc.base.skin} />}
         {doc.garments.map((g) =>
-          g.visible ? <GarmentView key={g.id} g={g} selectedText={g.id === selectedId ? selectedText : null} showCut={g.id === selectedId} /> : null,
+          g.visible ? <GarmentView key={g.id} g={g} selectedText={g.id === selectedId ? selectedText : null} showCut={g.id === selectedId} rendered={rendered} shading={doc.settings.shading} /> : null,
         )}
+        {doc.notes.map((n) => {
+          const { arrow, head } = notePaths(n);
+          const on = n.id === selectedNote;
+          return (
+            <g key={n.id}>
+              <path d={arrow} fill="none" stroke="#2B2B2B" strokeWidth={1.2} strokeLinecap="round" pointerEvents="none" />
+              <path d={head} fill="none" stroke="#2B2B2B" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
+              <text
+                x={n.x}
+                y={n.y}
+                fontFamily="Caveat, cursive"
+                fontWeight={700}
+                fontSize={30}
+                fill="#2B2B2B"
+                stroke={on ? ACCENT : 'none'}
+                strokeWidth={on ? 0.8 : 0}
+                paintOrder="stroke"
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+                data-kind="note"
+                data-id={n.id}
+              >
+                {n.text}
+              </text>
+              {on && <circle cx={n.tx} cy={n.ty} r={handleR * 1.4} fill={ACCENT} stroke="#fff" strokeWidth={1.2 / view.k} data-kind="tip" data-id={n.id} style={{ cursor: 'grab' }} />}
+            </g>
+          );
+        })}
         {showHandles && sel && (
           <g>
             {sel.points.map((p, i) => {

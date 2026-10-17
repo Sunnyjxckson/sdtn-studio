@@ -1,4 +1,5 @@
 import { useStore } from '../store';
+import { SKINS } from '../model/croquis';
 import { FIT_NAMES, type Fit } from '../model/garment';
 import { Icon } from './icons';
 
@@ -30,6 +31,18 @@ function BasePanel() {
           <button key={view} className={base.view === view ? 'seg on' : 'seg'} onClick={() => setBase({ view })}>
             {view === 'front' ? 'Front' : 'Back'}
           </button>
+        ))}
+      </div>
+      <div className="swatches" aria-label="Skin tone">
+        {SKINS.map((k) => (
+          <button
+            key={k.id}
+            className={base.skin === k.id ? 'skin on' : 'skin'}
+            style={{ background: k.color }}
+            title={k.id}
+            aria-label={`Skin tone ${k.id}`}
+            onClick={() => setBase({ skin: k.id })}
+          />
         ))}
       </div>
     </section>

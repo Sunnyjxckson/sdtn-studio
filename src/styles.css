@@ -30,7 +30,20 @@ button:disabled { cursor: default; opacity: 0.4; }
 .tab { font-weight: 500; font-size: 13px; padding: 8px 16px; border: 0; border-radius: 6px; background: transparent; color: var(--text); }
 .tab.on { background: var(--accent); color: #fff; }
 .tab:disabled { color: #8a867e; opacity: 1; }
-.topbar-end { min-width: 150px; text-align: right; }
+.topbar-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 260px; }
+.small-tabs .tab { padding: 6px 12px; font-size: 12px; }
+.shadebtn { padding: 8px 12px; font-size: 12px; }
+.shadebtn:disabled { opacity: 0.4; }
+.swatches { display: flex; gap: 8px; }
+.skin { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--line); padding: 0; }
+.skin.on { border-color: var(--text); }
+.range { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.range span { display: flex; justify-content: space-between; }
+input[type=range] { accent-color: var(--accent); width: 100%; }
+.patternbar { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 49px; }
+.patternbar .primary { margin-left: 8px; padding: 8px 14px; border-radius: 6px; border: 0; background: var(--accent); color: #fff; font-weight: 600; font-size: 13px; }
+.patternsvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: grab; }
+.piecelist { font-size: 12px; }
 
 .main { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr) 300px; }
 .panel { background: var(--panel); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; min-height: 0; }
@@ -99,7 +112,8 @@ button:disabled { cursor: default; opacity: 0.4; }
 @media (max-width: 1100px) {
   .main { grid-template-columns: 230px minmax(0, 1fr) 250px; }
   .toolhelp { display: none; }
-  .topbar-end { display: none; }
+  .topbar-end { min-width: 0; }
+  .brandname { display: none; }
 }
 @media (max-width: 800px) {
   body { overflow: auto; }

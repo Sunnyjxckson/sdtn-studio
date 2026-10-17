@@ -1,6 +1,10 @@
 import { useStore } from '../store';
 import {
   computeSpec,
+  FABRIC_NAMES,
+  findPoint,
+  PX_IN_H,
+  PX_IN_V,
   FIT_NAMES,
   HOLE_SIZES,
   POCKET_NAMES,
@@ -41,6 +45,24 @@ export function RightPanel() {
   const holeSize = useStore((s) => s.holeSize);
   const a = useStore.getState; // actions are stable
 
+  const note = useStore((s) => s.doc.notes.find((n) => n.id === s.selectedNote));
+  if (!g && note) {
+    return (
+      <aside className="panel right">
+        <div className="titlerow">
+          <span className="title">Note</span>
+          <button className="iconbtn" aria-label="Delete note" title="Delete note" onClick={() => a().removeNote(note.id)}>
+            <Icon name="trash" size={16} />
+          </button>
+        </div>
+        <section className="group textbox">
+          <label className="label" htmlFor="notetext">NOTE TEXT</label>
+          <input id="notetext" type="text" value={note.text} onChange={(e) => a().setNoteText(note.id, e.target.value)} />
+          <p className="hint">Drag the note to move it. Drag the red dot to aim the arrow.</p>
+        </section>
+      </aside>
+    );
+  }
   if (!g) {
     return (
       <aside className="panel right">
@@ -52,6 +74,13 @@ export function RightPanel() {
     );
   }
   const spec = computeSpec(g);
+  const p = g.points;
+  const hemY = Math.max(findPoint(p, 'hemLo').y, findPoint(p, 'hemLi').y);
+  const sliders = [
+    { m: 'inseam' as const, label: 'Length', v: (hemY - findPoint(p, 'crotch').y) / PX_IN_V, min: 22, max: 32 },
+    { m: 'knee' as const, label: 'Knee', v: Math.abs(findPoint(p, 'kneeLi').x - findPoint(p, 'kneeLo').x) / PX_IN_H, min: 6, max: 14 },
+    { m: 'opening' as const, label: 'Leg opening', v: Math.abs(findPoint(p, 'hemLi').x - findPoint(p, 'hemLo').x) / PX_IN_H, min: 6, max: 18 },
+  ];
   const text = selText != null ? g.texts[selText] : undefined;
 
   return (
@@ -106,12 +135,50 @@ export function RightPanel() {
         <p className="hint">Picking a fit or rise resets the outline. Holes, rips, text and cuts stay.</p>
       </Group>
 
+      <Group label="SHAPE">
+        {sliders.map((sl) => (
+          <label key={sl.m} className="range">
+            <span>
+              {sl.label}
+              <span className="mono">{(Math.round(sl.v * 2) / 2).toFixed(1)} in</span>
+            </span>
+            <input
+              type="range"
+              min={sl.min}
+              max={sl.max}
+              step={0.5}
+              value={Math.min(sl.max, Math.max(sl.min, Math.round(sl.v * 2) / 2))}
+              onChange={(e) => a().setMeasure(g.id, sl.m, Number(e.target.value))}
+            />
+          </label>
+        ))}
+        <p className="hint">The pattern pieces follow these numbers.</p>
+      </Group>
+
+      <Group label="FABRIC">
+        <div className="grid3">
+          {FABRIC_NAMES.map((n) => (
+            <button key={n} className={n === g.fabric ? 'opt on' : 'opt'} onClick={() => a().setFabric(g.id, n)}>
+              {n}
+            </button>
+          ))}
+        </div>
+        <label className="range">
+          <span>
+            Pattern scale
+            <span className="mono">{g.fabricScale.toFixed(1)}x</span>
+          </span>
+          <input type="range" min={0.5} max={3} step={0.1} value={g.fabricScale} onChange={(e) => a().setFabricScale(g.id, Number(e.target.value))} />
+        </label>
+        <p className="hint">Fabric shows in the Rendered look.</p>
+      </Group>
+
       <Group label="DETAILS">
         <Options names={WAIST_NAMES} value={g.parts.waist} onPick={(n) => a().setWaist(g.id, n)} />
         <Options names={POCKET_NAMES} value={g.parts.pocket} onPick={(n) => a().setPocket(g.id, n)} />
       </Group>
 
-      <Group label="WASH">
+      <Group label="COLOR">
         <div className="washes">
           {WASH_NAMES.map((n) => (
             <button

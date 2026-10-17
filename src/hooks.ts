@@ -25,7 +25,7 @@ export function useAutosave() {
   }, []);
 }
 
-const KEYS: Record<string, Tool> = { v: 'move', a: 'add', e: 'erase', c: 'cut', o: 'hole', d: 'distress', t: 'text', h: 'hand' };
+const KEYS: Record<string, Tool> = { v: 'move', a: 'add', e: 'erase', c: 'cut', o: 'hole', d: 'distress', t: 'text', n: 'note', h: 'hand' };
 
 export function useShortcuts() {
   useEffect(() => {

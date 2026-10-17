@@ -9,7 +9,13 @@ export type Fit = 'Skinny' | 'Slim' | 'Straight' | 'Flare' | 'Baggy' | 'Wide';
 export type Rise = 'Low' | 'Mid' | 'High';
 export type WaistKind = 'Regular' | 'Belt loops' | 'Drawcord' | 'Knee strap';
 export type PocketKind = 'Scoop' | 'Coin' | 'Cargo' | 'None';
-export type WashName = 'Raw indigo' | 'Washed black' | 'Grey' | 'Bleached' | 'Ecru';
+export type WashName = 'Raw indigo' | 'Washed black' | 'Black' | 'Crimson' | 'Grey' | 'Bleached' | 'Ecru';
+export type FabricKind = 'Denim' | 'Plaid' | 'Houndstooth' | 'Pinstripe' | 'Polka dot' | 'Leather' | 'Satin' | 'Knit';
+export const FABRIC_NAMES: FabricKind[] = ['Denim', 'Plaid', 'Houndstooth', 'Pinstripe', 'Polka dot', 'Leather', 'Satin', 'Knit'];
+
+/** Pixels per inch in garment space: vertical measures, and leg widths. */
+export const PX_IN_V = 9.4;
+export const PX_IN_H = 4.6;
 
 export interface Pt {
   x: number;
@@ -47,6 +53,8 @@ export interface Garment {
   points: Pt[];
   parts: { waist: WaistKind; pocket: PocketKind };
   wash: WashName;
+  fabric: FabricKind;
+  fabricScale: number;
   holes: Hole[];
   distress: Rip[];
   texts: GText[];
@@ -63,13 +71,15 @@ export const POCKET_NAMES: PocketKind[] = ['Scoop', 'Coin', 'Cargo', 'None'];
 export const WASHES: Record<WashName, string> = {
   'Raw indigo': '#2C3A5C',
   'Washed black': '#454B54',
+  Black: '#1C1C1C',
+  Crimson: '#7A2B2B',
   Grey: '#8A8F96',
   Bleached: '#9DB4CC',
   Ecru: '#E2D9C3',
 };
 export const WASH_NAMES = Object.keys(WASHES) as WashName[];
 
-export const HOLE_SIZES = { S: 6, M: 10, L: 16 } as const;
+export const HOLE_SIZES = { S: 6, M: 10, L: 16, XL: 24 } as const;
 export type HoleSize = keyof typeof HOLE_SIZES;
 export const TEXT_SIZES = { Small: 11, Medium: 16, Large: 24 } as const;
 
@@ -126,6 +136,8 @@ export function createJeans(fit: Fit = 'Straight', rise: Rise = 'Mid'): Garment 
     points: buildPoints(fit, rise),
     parts: { waist: 'Regular', pocket: 'Scoop' },
     wash: 'Washed black',
+    fabric: 'Denim',
+    fabricScale: 1,
     holes: [],
     distress: [],
     texts: [],
@@ -226,7 +238,7 @@ export function holeThreads(h: Hole): string {
 }
 
 export function isDarkWash(w: WashName): boolean {
-  return w === 'Raw indigo' || w === 'Washed black';
+  return w !== 'Grey' && w !== 'Bleached' && w !== 'Ecru';
 }
 
 /** Index to insert at, plus the nearest point on the outline, for the Add point tool. */
@@ -275,10 +287,46 @@ export function computeSpec(g: Garment): SpecRow[] {
   const waistIn = (2 * Math.abs(wr.x - wl.x)) / 9;
   return [
     { k: 'Waist', v: `${half(waistIn)} in` },
+    { k: 'Hip', v: `${half((2 * Math.abs(findPoint(p, 'hipR').x - findPoint(p, 'hipL').x)) / 9)} in` },
     { k: 'Rise', v: `${half((cr.y - bandTop(p)) / 9.4)} in` },
     { k: 'Inseam', v: `${half(Math.max(0, inseamPx) / 9.4)} in` },
     { k: 'Knee', v: `${half(kneeW / 4.6)} in` },
     { k: 'Leg opening', v: `${half(hemW / 4.6)} in` },
     { k: 'Holes / rips', v: `${g.holes.length} / ${g.distress.length}` },
   ];
+}
+
+/** Fill in fields that older saved garments do not have. */
+export function normalizeGarment(g: Garment): Garment {
+  return { ...g, fabric: g.fabric ?? 'Denim', fabricScale: g.fabricScale ?? 1 };
+}
+
+export type Measure = 'inseam' | 'knee' | 'opening';
+
+/** Set a measurement (inches) by moving the keyed points. Mutates the given garment. */
+export function applyMeasure(g: Garment, which: Measure, inches: number): void {
+  const at = (k: string) => g.points.find((p) => p.key === k);
+  if (which === 'inseam') {
+    const cr = at('crotch');
+    if (!cr) return;
+    const y = Math.min(GARMENT_H - 6, cr.y + inches * PX_IN_V);
+    for (const k of ['hemLo', 'hemLi', 'hemRi', 'hemRo']) {
+      const p = at(k);
+      if (p) p.y = y;
+    }
+    return;
+  }
+  const keys = which === 'knee' ? (['kneeLo', 'kneeLi', 'kneeRi', 'kneeRo'] as const) : (['hemLo', 'hemLi', 'hemRi', 'hemRo'] as const);
+  const half = (inches * PX_IN_H) / 2;
+  const [lo, li, ri, ro] = keys.map(at);
+  if (lo && li) {
+    const c = (lo.x + li.x) / 2;
+    lo.x = c - half;
+    li.x = c + half;
+  }
+  if (ri && ro) {
+    const c = (ri.x + ro.x) / 2;
+    ri.x = c - half;
+    ro.x = c + half;
+  }
 }
