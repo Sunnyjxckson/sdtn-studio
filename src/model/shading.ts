@@ -45,13 +45,13 @@ export function foldStrokes(g: Garment): Stroke[] {
 
   // crotch: strokes fanning up and out
   const cr = findPoint(p, 'crotch');
-  for (let k = 0; k < (has(g, 'crotch', 'waistL') ? 6 : 0); k++) {
+  for (let k = 0; k < (has(g, 'crotch', 'waistL') ? 4 : 0); k++) {
     const side = k % 2 ? 1 : -1;
     const sx = cr.x + side * (2 + r() * 3);
     const sy = cr.y - 2 - r() * 4;
     const ex = cr.x + side * (16 + r() * 30);
     const ey = cr.y - 10 - r() * 36;
-    out.push({ d: `M${n1(sx)},${n1(sy)} Q${n1(cr.x + side * (8 + r() * 10))},${n1(cr.y - 8 - r() * 14)} ${n1(ex)},${n1(ey)}`, w: 1.4, o: 0.28 + r() * 0.1 });
+    out.push({ d: `M${n1(sx)},${n1(sy)} Q${n1(cr.x + side * (8 + r() * 10))},${n1(cr.y - 8 - r() * 14)} ${n1(ex)},${n1(ey)}`, w: 1.2, o: 0.16 + r() * 0.08 });
   }
 
   // hem stacking
@@ -89,8 +89,54 @@ export function highlightStrokes(g: Garment): Stroke[] {
       const m = L[1];
       const e = lerp(L[1], L[2], s.b);
       const ey = Math.min(e.y, bottom - 8);
-      out.push({ d: `M${n1(a.x)},${n1(a.y)} Q${n1(m.x)},${n1(m.y)} ${n1(e.x)},${n1(ey)}`, w: s.w, o: s.o });
+      out.push({ d: `M${n1(a.x)},${n1(a.y)} Q${n1(m.x)},${n1(m.y)} ${n1(e.x)},${n1(ey)}`, w: s.w * 1.3, o: s.o * 0.5 });
     }
+  }
+  return out;
+}
+
+/** Faded whiskers fanning out from the crotch toward the hips, like a worn wash. */
+export function whiskerStrokes(g: Garment): Stroke[] {
+  if (!has(g, 'crotch', 'hipL', 'hipR')) return [];
+  const r = rng(g.id + ':whisk');
+  const p = g.points;
+  const cr = findPoint(p, 'crotch');
+  const out: Stroke[] = [];
+  for (const side of [-1, 1]) {
+    const hip = findPoint(p, side < 0 ? 'hipL' : 'hipR');
+    for (let k = 0; k < 5; k++) {
+      const sx = cr.x + side * (5 + k * 3 + r() * 3);
+      const sy = cr.y - 4 - k * 7 - r() * 3;
+      const ex = cr.x + (hip.x - cr.x) * (0.5 + r() * 0.25);
+      const ey = sy - 5 - r() * 7 - k * 2;
+      const cx = (sx + ex) / 2, cy = Math.min(sy, ey) - 2 - r() * 4;
+      out.push({ d: `M${n1(sx)},${n1(sy)} Q${n1(cx)},${n1(cy)} ${n1(ex)},${n1(ey)}`, w: 2.6 - k * 0.3, o: 0.34 - k * 0.04 });
+    }
+  }
+  return out;
+}
+
+export interface Spot {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  o: number;
+}
+
+/** Soft faded patches down the front of each thigh and over the knees. */
+export function fadeSpots(g: Garment): Spot[] {
+  const p = g.points;
+  const out: Spot[] = [];
+  for (const [hip, ko, ki] of [['hipL', 'kneeLo', 'kneeLi'], ['hipR', 'kneeRo', 'kneeRi']] as const) {
+    if (!has(g, hip, ko, ki, 'crotch')) continue;
+    const h = findPoint(p, hip), cr = findPoint(p, 'crotch'), o = findPoint(p, ko), i = findPoint(p, ki);
+    const top = { x: (h.x + cr.x) / 2, y: (h.y + cr.y) / 2 };
+    const knee = { x: (o.x + i.x) / 2, y: (o.y + i.y) / 2 };
+    const kw = Math.abs(o.x - i.x);
+    const tw = Math.abs(h.x - cr.x);
+    out.push({ cx: top.x + (knee.x - top.x) * 0.42, cy: top.y + (knee.y - top.y) * 0.42, rx: tw * 0.28, ry: (knee.y - top.y) * 0.32, o: 0.2 });
+    out.push({ cx: knee.x, cy: knee.y - 6, rx: kw * 0.3, ry: 18, o: 0.14 });
   }
   return out;
 }

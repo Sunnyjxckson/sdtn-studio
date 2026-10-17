@@ -18,6 +18,8 @@ export interface Fitted {
   g: Garment;
   /** Index into g.points for each original point. */
   index: number[];
+  /** How far to pull the top corners of the waistband in, garment units, left and right. */
+  bandInset: [number, number];
   /** When one leg is behind the other: draw `back` first, then `front` over it. */
   layers: { back: Layer; front: Layer } | null;
 }
@@ -55,7 +57,8 @@ function hipAt(body: BodyProfile, y: number): { l: number; r: number } | null {
   return h[h.length - 1];
 }
 
-function pushFromBone(bone: BoneProf, p: Vec, side: 'left' | 'right'): Vec {
+/** snap: near the top of the thigh, ease toward the hip ease so the side line runs on smoothly. */
+function pushFromBone(bone: BoneProf, p: Vec, side: 'left' | 'right', snap?: { ease: number; until: number }): Vec {
   const dx = bone.b.x - bone.a.x, dy = bone.b.y - bone.a.y;
   const L = Math.hypot(dx, dy) || 1;
   const u = { x: dx / L, y: dy / L };
@@ -67,9 +70,16 @@ function pushFromBone(bone: BoneProf, p: Vec, side: 'left' | 'right'): Vec {
   const base = { x: bone.a.x + u.x * t * L, y: bone.a.y + u.y * t * L };
   let d = (p.x - base.x) * n.x + (p.y - base.y) * n.y;
   const need = w + EASE.leg;
+  const d0 = d;
   if (side === 'left' && -d < need) d = -need;
   else if (side === 'right' && d < need) d = need;
-  else return p;
+  if (snap && t < snap.until) {
+    const target = (w + snap.ease) * (side === 'left' ? -1 : 1);
+    const k = Math.max(0, t) / snap.until;
+    const blend = k * k * (3 - 2 * k);
+    d = target + (d - target) * blend;
+  }
+  if (d === d0) return p;
   return { x: base.x + n.x * d, y: base.y + n.y * d };
 }
 
@@ -101,7 +111,7 @@ export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: 
   const at = (k: string) => points.findIndex((p) => p.key === k);
   const iWL = at('waistL'), iWR = at('waistR'), iHRo = at('hemRo'), iHRi = at('hemRi'), iCr = at('crotch'), iHLi = at('hemLi'), iHLo = at('hemLo');
   if (rig.identity || [iWL, iWR, iHRo, iHRi, iCr, iHLi, iHLo].some((i) => i < 0)) {
-    return { g, index: points.map((_, i) => i), layers: null };
+    return { g, index: points.map((_, i) => i), layers: null, bandInset: [0, 0] };
   }
 
   const n = points.length;
@@ -154,6 +164,18 @@ export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: 
   const toGarment = (q: Vec) => ({ x: (q.x - t.x) / t.scale, y: (q.y - t.y) / t.scale });
   const regionOf = (q: Vec) => rig.regions.find((r) => q.x >= r.rect.x0 && q.x < r.rect.x1 && q.y >= r.rect.y0 && q.y < r.rect.y1);
 
+  // how loose the garment is over the hips: the hips and waist follow the body at that ease
+  const hipEase = (key: string, side: 'l' | 'r') => {
+    const hp = points.find((p) => p.key === key);
+    if (!hp) return EASE.hip;
+    const w = poseWarp(rig, toCanvas(hp));
+    const h = hipAt(body, w.y);
+    if (!h) return EASE.hip;
+    const e = side === 'l' ? h.l - w.x : w.x - h.r;
+    return Math.max(EASE.hip, Math.min(16, e));
+  };
+  const easeL = hipEase('hipL', 'l'), easeR = hipEase('hipR', 'r');
+
   const placed = pts.map(({ p, chain }) => {
     const q = toCanvas(p);
     let w = poseWarp(rig, q);
@@ -162,16 +184,36 @@ export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: 
       if (r && (r.id === 'pL' || r.id === 'pR')) {
         if (chain === 'outL' || chain === 'outR') {
           const h = hipAt(body, w.y);
-          if (h) w = chain === 'outL' ? { x: Math.min(w.x, h.l - EASE.hip), y: w.y } : { x: Math.max(w.x, h.r + EASE.hip), y: w.y };
+          if (h) w = chain === 'outL' ? { x: h.l - easeL, y: w.y } : { x: h.r + easeR, y: w.y };
         }
       } else if (r) {
         const s = r.id.endsWith('L') ? 0 : 1;
         const bone = body.legs[s][r.id.startsWith('t') ? 0 : 1];
-        if (bone) w = pushFromBone(bone, w, chain === 'outL' || chain === 'inR' ? 'left' : 'right');
+        const outer = chain === 'outL' || chain === 'outR';
+        const snap = outer && r.id.startsWith('t') ? { ease: chain === 'outL' ? easeL : easeR, until: 0.35 } : undefined;
+        if (bone) w = pushFromBone(bone, w, chain === 'outL' || chain === 'inR' ? 'left' : 'right', snap);
       }
     }
     return { ...p, ...toGarment(w) };
   });
+
+  // rebuild the waist edge between the fitted waist corners, with the curve
+  const wl = placed[index[iWL]], wr = placed[index[iWR]];
+  for (let i = index[iWL] + 1, j = 1; i < index[iWR]; i++, j++) {
+    const u = j / (index[iWR] - index[iWL]);
+    placed[i] = { ...placed[i], x: wl.x + (wr.x - wl.x) * u, y: wl.y + (wr.y - wl.y) * u + sag * 4 * u * (1 - u) };
+  }
+  // the body narrows above the waist, so the top of the band comes in with it
+  const bandInset: [number, number] = [0, 0];
+  {
+    const cw = (p: Vec) => toCanvas(p);
+    const yW = cw(wl).y, yT = yW - 14 * t.scale;
+    const hW = hipAt(body, yW), hT = hipAt(body, yT);
+    if (hW && hT) {
+      bandInset[0] = Math.max(0, Math.min(10, (hT.l - hW.l) / t.scale));
+      bandInset[1] = Math.max(0, Math.min(10, (hW.r - hT.r) / t.scale));
+    }
+  }
 
   const warpPt = <T extends { x: number; y: number }>(o: T): T => ({ ...o, ...toGarment(poseWarp(rig, toCanvas(o))) });
 
@@ -217,5 +259,5 @@ export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: 
     }
   }
 
-  return { g: fitted, index, layers };
+  return { g: fitted, index, layers, bandInset };
 }

@@ -394,6 +394,7 @@ export function Canvas() {
             rendered,
             shading: doc.settings.shading,
             sag: rig.identity ? 0 : sag,
+            bandInset: fit.bandInset,
           };
           if (fit.layers) {
             return (

@@ -34,10 +34,10 @@ export function FabricDefs({ g }: { g: Garment }) {
   switch (g.fabric) {
     case 'Denim':
       tile = (
-        <Tile g={g} w={6} h={6}>
-          <rect width={6} height={6} fill={base} />
-          <path d="M-1,7 L7,-1 M-1,1 L1,-1 M5,7 L7,5" stroke={light} strokeOpacity={0.4} strokeWidth={0.9} />
-          <path d="M-1,4 L4,-1 M2,7 L7,2" stroke={dark} strokeOpacity={0.3} strokeWidth={0.8} />
+        <Tile g={g} w={3} h={3}>
+          <rect width={3} height={3} fill={base} />
+          <path d="M-0.5,3.5 L3.5,-0.5" stroke={light} strokeOpacity={0.22} strokeWidth={0.6} />
+          <path d="M-0.5,2 L2,-0.5 M1,3.5 L3.5,1" stroke={dark} strokeOpacity={0.22} strokeWidth={0.45} />
         </Tile>
       );
       overlay = (

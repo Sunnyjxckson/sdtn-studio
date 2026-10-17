@@ -9,7 +9,7 @@ import {
   type Garment,
 } from '../model/garment';
 import { mix } from '../model/color';
-import { foldStrokes, highlightStrokes } from '../model/shading';
+import { fadeSpots, foldStrokes, highlightStrokes, whiskerStrokes } from '../model/shading';
 import { polyPath, ripFray, ripPoly, ripThreads, wornPatch } from '../model/rips';
 import { FabricDefs, fabricId, hasOverlay, overlayId } from './FabricDefs';
 
@@ -31,13 +31,15 @@ interface Props {
   legOnly?: boolean;
   /** Darken the whole layer (the leg furthest from the viewer). */
   dim?: boolean;
+  /** Pull the top corners of the waistband in (garment units, left and right). */
+  bandInset?: [number, number];
   /** Suffix for defs ids when the same garment is drawn as more than one layer. */
   layer?: string;
 }
 
 /** Renders one garment from data, in garment space, inside its own transform. */
-export const GarmentView = memo(function GarmentView({ g, selectedText, showCut, rendered, shading, sag = 0, edge, legOnly = false, dim = false, layer = '' }: Props) {
-  const paths = garmentPaths(g, sag);
+export const GarmentView = memo(function GarmentView({ g, selectedText, showCut, rendered, shading, sag = 0, edge, legOnly = false, dim = false, layer = '', bandInset }: Props) {
+  const paths = garmentPaths(g, sag, bandInset);
   const { body } = paths;
   const band = legOnly ? '' : paths.band;
   const details = legOnly ? '' : paths.details;
@@ -55,7 +57,9 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
   const maskId = `hm-${uid}`;
 
   const fill = rendered ? `url(#${fabricId(g)})` : base;
-  const outline = rendered ? mix(base, '#000000', 0.7) : '#141414';
+  const outline = rendered ? mix(base, '#000000', 0.62) : '#141414';
+  const sw = rendered ? 1.1 : 1.6;
+  const thread = '#C9A35C';
   const holes = rendered ? g.holes.map((h, i) => ({ h, i, poly: ripPoly(g.id, i, h) })) : [];
 
   return (
@@ -79,6 +83,16 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
             </filter>
             <filter id={`wn-${uid}`} x="-40%" y="-40%" width="180%" height="180%">
               <feGaussianBlur stdDeviation={3} />
+            </filter>
+            <filter id={`fd-${uid}`} x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation={9} />
+            </filter>
+            <filter id={`wk-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation={1.5} />
+            </filter>
+            <filter id={`gr-${uid}`} filterUnits="userSpaceOnUse" x={BIG.x} y={BIG.y} width={BIG.w} height={BIG.h}>
+              <feTurbulence type="fractalNoise" baseFrequency="0.9 0.045" numOctaves={2} seed={7} />
+              <feColorMatrix type="saturate" values="0" />
             </filter>
             <mask id={maskId} maskUnits="userSpaceOnUse" x={BIG.x} y={BIG.y} width={BIG.w} height={BIG.h}>
               <rect x={BIG.x} y={BIG.y} width={BIG.w} height={BIG.h} fill="#fff" />
@@ -104,9 +118,9 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
       </defs>
       <g clipPath={`url(#${cropId})`}>
         <g mask={rendered && holes.length ? `url(#${maskId})` : undefined}>
-          <path d={body} fill={fill} stroke={edge ? 'none' : outline} strokeWidth={rendered ? 1.4 : 1.6} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />
-          {edge && <path d={edge} fill="none" stroke={outline} strokeWidth={rendered ? 1.4 : 1.6} strokeLinejoin="round" strokeLinecap="round" pointerEvents="none" />}
-          {band && <path d={band} fill={fill} stroke={outline} strokeWidth={rendered ? 1.4 : 1.6} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />}
+          <path d={body} fill={fill} stroke={edge ? 'none' : outline} strokeWidth={sw} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />
+          {edge && <path d={edge} fill="none" stroke={outline} strokeWidth={sw} strokeLinejoin="round" strokeLinecap="round" pointerEvents="none" />}
+          {band && <path d={band} fill={fill} stroke={outline} strokeWidth={sw} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />}
           {rendered && hasOverlay(g) && (
             <g pointerEvents="none">
               <path d={body} fill={`url(#${overlayId(g)})`} />
@@ -128,9 +142,24 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
                 <path d={line} />
                 {band && <path d={band} />}
               </g>
-              <g fill="none" stroke="#000" strokeLinecap="round">
+              {g.fabric === 'Denim' && (
+                <rect x={BIG.x} y={BIG.y} width={BIG.w} height={BIG.h} filter={`url(#gr-${uid})`} opacity={0.32} style={{ mixBlendMode: 'overlay' }} />
+              )}
+              <g fill="#fff" filter={`url(#fd-${uid})`}>
+                {fadeSpots(g).map((s, i) => (
+                  <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} opacity={s.o} />
+                ))}
+              </g>
+              {!legOnly && (
+                <g fill="none" stroke="#fff" strokeLinecap="round" filter={`url(#wk-${uid})`}>
+                  {whiskerStrokes(g).map((s, i) => (
+                    <path key={i} d={s.d} strokeWidth={s.w} opacity={s.o} />
+                  ))}
+                </g>
+              )}
+              <g fill="none" stroke="#000" strokeLinecap="round" filter={`url(#wk-${uid})`}>
                 {foldStrokes(g).map((s, i) => (
-                  <path key={i} d={s.d} strokeWidth={s.w} opacity={s.o} />
+                  <path key={i} d={s.d} strokeWidth={s.w * 1.6} opacity={s.o * 0.9} />
                 ))}
               </g>
               <g fill="none" stroke="#fff" strokeLinecap="round" filter={`url(#sf-${uid})`}>
@@ -141,7 +170,18 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
             </g>
           )}
           <path d={details} fill="none" stroke={rendered ? '#D9C48A' : dark ? '#C9CDD2' : '#5A5A5A'} strokeOpacity={rendered ? 0.8 : 1} strokeWidth={1.1} strokeLinecap="round" strokeDasharray="3 2" pointerEvents="none" />
-          <path d={solid} fill="none" stroke={rendered ? mix(base, '#000000', 0.65) : '#141414'} strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
+          <path d={solid} fill="none" stroke={rendered ? mix(base, '#000000', 0.65) : '#141414'} strokeWidth={rendered ? 1 : 1.3} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
+          {rendered && !legOnly && (
+            <g pointerEvents="none">
+              <path d={solid} fill="none" stroke={thread} strokeOpacity={0.75} strokeWidth={0.8} strokeDasharray="2.2 1.6" transform="translate(0 2.2)" />
+              <path d={paths.stitch} fill="none" stroke={thread} strokeOpacity={0.8} strokeWidth={0.8} strokeDasharray="2.2 1.6" />
+              {paths.rivets.map((r, i) => (
+                <circle key={i} cx={r.x} cy={r.y} r={1.8} fill="#B07A45" stroke="#5C3A1E" strokeWidth={0.5} />
+              ))}
+              <circle cx={paths.button.x} cy={paths.button.y} r={3.8} fill="#A6A49E" stroke="#4A4844" strokeWidth={0.7} />
+              <circle cx={paths.button.x} cy={paths.button.y} r={2} fill="none" stroke="#6E6C67" strokeWidth={0.5} />
+            </g>
+          )}
           <g clipPath={`url(#${shapeId})`}>
             {g.distress.map((d, i) => {
               if (!rendered) {

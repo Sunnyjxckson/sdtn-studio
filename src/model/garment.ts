@@ -164,19 +164,28 @@ export interface GarmentPaths {
   details: string;
   solid: string;
   strap: string;
+  /** Topstitching along the band, and rivet and button positions. */
+  stitch: string;
+  rivets: { x: number; y: number }[];
+  button: { x: number; y: number };
 }
 
 /** sag: how far the waist edge dips at the centre (garment units), so the band wraps the body. */
-export function garmentPaths(g: Pick<Garment, 'points' | 'parts'>, sag = 0): GarmentPaths {
+export function garmentPaths(g: Pick<Garment, 'points' | 'parts'>, sag = 0, inset: [number, number] = [0, 0]): GarmentPaths {
   const pts = g.points;
   const body = 'M' + pts.map((p) => f(p.x, p.y)).join(' L') + ' Z';
   const wl = findPoint(pts, 'waistL');
   const wr = findPoint(pts, 'waistR');
   const top = wl.y;
   const mx = (wl.x + wr.x) / 2;
+  const my = (wl.y + wr.y) / 2;
+  const tl = wl.x + inset[0], tr = wr.x - inset[1];
   const band =
-    'M' + f(wl.x, wl.y - 14) + ' Q' + f(mx, (wl.y + wr.y) / 2 - 14 + sag * 2) + ' ' + f(wr.x, wr.y - 14) +
-    ' L' + f(wr.x, wr.y) + ' Q' + f(mx, (wl.y + wr.y) / 2 + sag * 2) + ' ' + f(wl.x, wl.y) + ' Z';
+    'M' + f(tl, wl.y - 14) + ' Q' + f(mx, my - 14 + sag * 2) + ' ' + f(tr, wr.y - 14) +
+    ' L' + f(wr.x, wr.y) + ' Q' + f(mx, my + sag * 2) + ' ' + f(wl.x, wl.y) + ' Z';
+  const stitch =
+    'M' + f(tl + 1.5, wl.y - 11) + ' Q' + f(mx, my - 11 + sag * 2) + ' ' + f(tr - 1.5, wr.y - 11) +
+    ' M' + f(wl.x + 1, wl.y - 3) + ' Q' + f(mx, my - 3 + sag * 2) + ' ' + f(wr.x - 1, wr.y - 3);
   const ct = top + sag;
   const details =
     'M' + f(150, ct) + ' V' + (ct + 52) +
@@ -213,7 +222,11 @@ export function garmentPaths(g: Pick<Garment, 'points' | 'parts'>, sag = 0): Gar
     const b = findPoint(pts, 'kneeRi');
     strap = 'M' + f(a.x - 4, a.y + 26) + ' Q' + f(150, a.y + 56) + ' ' + f(b.x + 4, b.y + 26);
   }
-  return { body, band, details, solid, strap };
+  const rivets = [
+    { x: wl.x + 9, y: top + 4 + sag * 0.3 },
+    { x: wr.x - 9, y: top + 4 + sag * 0.3 },
+  ];
+  return { body, band, details, solid, strap, stitch, rivets, button: { x: mx + 6, y: my - 7 + sag } };
 }
 
 /** Zig-zag line used for raw edges and rips. */
