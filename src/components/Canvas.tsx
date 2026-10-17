@@ -6,6 +6,8 @@ import { fitToArtboard, setCanvasSize, zoomBy } from '../viewport';
 import { Artboard, CroquisView } from './CroquisView';
 import { GarmentView } from './GarmentView';
 import { notePaths } from '../model/note';
+import { IDENTITY_RIG, matStr, poseForward, poseInverse, poseRig } from '../model/figure';
+import { getCroquis } from '../model/croquis';
 
 type Drag =
   | { type: 'pan'; sx: number; sy: number; vx: number; vy: number }
@@ -98,10 +100,33 @@ export function Canvas() {
   }, []);
 
   const world = (e: { clientX: number; clientY: number }) => clientToLocal(worldRef.current, e.clientX, e.clientY);
-  const local = (gid: string, e: { clientX: number; clientY: number }) =>
-    clientToLocal(document.getElementById(`garment-${gid}`) as SVGGraphicsElement | null, e.clientX, e.clientY);
-
+  const cq = getCroquis(doc.base.sex, doc.base.view);
+  const rig = tab === 'sketch' ? poseRig(doc.base.sex, doc.base.pose, cq.waistY, cq.hemY) : IDENTITY_RIG;
   const garmentById = (id: string | null): Garment | undefined => doc.garments.find((g) => g.id === id);
+  /** Pointer to garment space, undoing the pose and the garment transform. */
+  const local = (gid: string, e: { clientX: number; clientY: number }) => {
+    const g = garmentById(gid) ?? useStore.getState().doc.garments.find((x) => x.id === gid);
+    const q = poseInverse(rig, world(e));
+    if (!g) return q;
+    const t = g.transform;
+    return { x: Math.round(((q.x - t.x) / t.scale) * 10) / 10, y: Math.round(((q.y - t.y) / t.scale) * 10) / 10 };
+  };
+  /** Posed garments are drawn through <use>, so work out what was hit from the data. */
+  const posedHit = (g: Garment, at: { x: number; y: number }): { kind: string; idx: number } => {
+    for (let i = g.texts.length - 1; i >= 0; i--) {
+      const x = g.texts[i];
+      if (Math.abs(at.x - x.x) < x.size * 0.36 * Math.max(1, x.t.length) && Math.abs(at.y - (x.y - x.size * 0.35)) < x.size * 0.7) return { kind: 'text', idx: i };
+    }
+    for (let i = g.holes.length - 1; i >= 0; i--) {
+      const h = g.holes[i];
+      if (Math.hypot(at.x - h.x, at.y - h.y) < h.r + 2) return { kind: 'hole', idx: i };
+    }
+    for (let i = g.distress.length - 1; i >= 0; i--) {
+      const d = g.distress[i];
+      if (Math.hypot(at.x - d.x, at.y - d.y) < 12) return { kind: 'dist', idx: i };
+    }
+    return { kind: 'garment', idx: -1 };
+  };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!e.isPrimary) return;
@@ -121,9 +146,15 @@ export function Canvas() {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
 
     const hit = (e.target as Element).closest('[data-kind]') as HTMLElement | SVGElement | null;
-    const kind = hit?.getAttribute('data-kind') ?? null;
+    let kind = hit?.getAttribute('data-kind') ?? null;
     const gid = hit?.getAttribute('data-gid') ?? null;
-    const idx = Number(hit?.getAttribute('data-i') ?? -1);
+    let idx = Number(hit?.getAttribute('data-i') ?? -1);
+    if (kind === 'posed' && gid) {
+      const pg = garmentById(gid);
+      const r = pg ? posedHit(pg, local(gid, e)) : { kind: 'garment', idx: -1 };
+      kind = r.kind;
+      idx = r.idx;
+    }
     const t = st.tool;
 
     // notes and their arrow tips
@@ -348,10 +379,28 @@ export function Canvas() {
     >
       <g ref={worldRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
         <Artboard />
-        {tab === 'sketch' && <CroquisView sex={doc.base.sex} view={doc.base.view} rendered={rendered} skin={doc.base.skin} />}
-        {doc.garments.map((g) =>
-          g.visible ? <GarmentView key={g.id} g={g} selectedText={g.id === selectedId ? selectedText : null} showCut={g.id === selectedId} rendered={rendered} shading={doc.settings.shading} /> : null,
-        )}
+        {tab === 'sketch' && <CroquisView sex={doc.base.sex} view={doc.base.view} pose={doc.base.pose} rendered={rendered} skin={doc.base.skin} />}
+        {doc.garments.map((g) => {
+          if (!g.visible) return null;
+          const gv = <GarmentView g={g} selectedText={g.id === selectedId ? selectedText : null} showCut={g.id === selectedId} rendered={rendered} shading={doc.settings.shading} />;
+          if (rig.identity) return <g key={g.id}>{gv}</g>;
+          // pose: draw the garment once, then place each piece (hips, thighs, shins) with its bone transform
+          return (
+            <g key={g.id}>
+              <defs>
+                <g id={`gp-${g.id}`}>{gv}</g>
+              </defs>
+              {rig.regions.map((r) => (
+                <g key={r.id} transform={matStr(r.m)}>
+                  <clipPath id={`rc-${g.id}-${r.id}`}>
+                    <rect x={r.clip.x0} y={r.clip.y0} width={r.clip.x1 - r.clip.x0} height={r.clip.y1 - r.clip.y0} />
+                  </clipPath>
+                  <use href={`#gp-${g.id}`} clipPath={`url(#rc-${g.id}-${r.id})`} data-kind="posed" data-gid={g.id} />
+                </g>
+              ))}
+            </g>
+          );
+        })}
         {doc.notes.map((n) => {
           const { arrow, head } = notePaths(n);
           const on = n.id === selectedNote;
@@ -383,8 +432,7 @@ export function Canvas() {
           <g>
             {sel.points.map((p, i) => {
               const t = sel.transform;
-              const x = t.x + p.x * t.scale;
-              const y = t.y + p.y * t.scale;
+              const { x, y } = poseForward(rig, { x: t.x + p.x * t.scale, y: t.y + p.y * t.scale });
               return (
                 <g key={i}>
                   <circle cx={x} cy={y} r={handleR * 2.2} fill="transparent" data-kind="pt" data-i={i} data-gid={sel.id} style={{ cursor: tool === 'erase' ? 'crosshair' : 'grab' }} />

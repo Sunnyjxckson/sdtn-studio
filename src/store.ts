@@ -4,6 +4,7 @@ import type { Draft } from 'immer';
 import { emptyDoc, normalizeDoc, type Doc, type RenderMode } from './model/doc';
 import type { Note } from './model/note';
 import type { Sex, SkinId, View } from './model/croquis';
+import type { PoseId } from './model/figure';
 import {
   applyMeasure,
   buildPoints,
@@ -71,7 +72,7 @@ interface State {
   setView: (v: Viewport) => void;
 
   // document edits that create their own undo step
-  setBase: (b: { sex?: Sex; view?: View; skin?: SkinId }) => void;
+  setBase: (b: { sex?: Sex; view?: View; skin?: SkinId; pose?: PoseId }) => void;
   setRender: (r: RenderMode) => void;
   setShading: (on: boolean) => void;
   setFabric: (id: string, f: FabricKind) => void;

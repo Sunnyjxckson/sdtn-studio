@@ -1,5 +1,6 @@
 import { useStore } from '../store';
 import { SKINS } from '../model/croquis';
+import { POSES } from '../model/figure';
 import { FIT_NAMES, type Fit } from '../model/garment';
 import { Icon } from './icons';
 
@@ -30,6 +31,13 @@ function BasePanel() {
         {(['front', 'back'] as const).map((view) => (
           <button key={view} className={base.view === view ? 'seg on' : 'seg'} onClick={() => setBase({ view })}>
             {view === 'front' ? 'Front' : 'Back'}
+          </button>
+        ))}
+      </div>
+      <div className="grid2" aria-label="Pose">
+        {POSES.map((p) => (
+          <button key={p.id} className={base.pose === p.id ? 'seg on' : 'seg'} onClick={() => setBase({ pose: p.id })}>
+            {p.label}
           </button>
         ))}
       </div>
@@ -111,7 +119,7 @@ function LayersPanel() {
         ))}
         <div className="layer base">
           <span className="layername muted">
-            <span className="mono">0</span> Croquis, {base.sex} {base.view}
+            <span className="mono">0</span> Croquis, {base.sex} {base.view}, {POSES.find((p) => p.id === base.pose)?.label.toLowerCase()}
           </span>
         </div>
       </div>
