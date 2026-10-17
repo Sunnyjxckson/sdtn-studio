@@ -166,17 +166,22 @@ export interface GarmentPaths {
   strap: string;
 }
 
-export function garmentPaths(g: Pick<Garment, 'points' | 'parts'>): GarmentPaths {
+/** sag: how far the waist edge dips at the centre (garment units), so the band wraps the body. */
+export function garmentPaths(g: Pick<Garment, 'points' | 'parts'>, sag = 0): GarmentPaths {
   const pts = g.points;
   const body = 'M' + pts.map((p) => f(p.x, p.y)).join(' L') + ' Z';
   const wl = findPoint(pts, 'waistL');
   const wr = findPoint(pts, 'waistR');
   const top = wl.y;
-  const band = 'M' + [f(wl.x, wl.y - 14), f(wr.x, wr.y - 14), f(wr.x, wr.y), f(wl.x, wl.y)].join(' L') + ' Z';
+  const mx = (wl.x + wr.x) / 2;
+  const band =
+    'M' + f(wl.x, wl.y - 14) + ' Q' + f(mx, (wl.y + wr.y) / 2 - 14 + sag * 2) + ' ' + f(wr.x, wr.y - 14) +
+    ' L' + f(wr.x, wr.y) + ' Q' + f(mx, (wl.y + wr.y) / 2 + sag * 2) + ' ' + f(wl.x, wl.y) + ' Z';
+  const ct = top + sag;
   const details =
-    'M' + f(150, top) + ' V' + (top + 52) +
-    ' M' + f(160, top) + ' V' + (top + 42) +
-    ' Q' + f(160, top + 54) + ' ' + f(150, top + 56);
+    'M' + f(150, ct) + ' V' + (ct + 52) +
+    ' M' + f(160, ct) + ' V' + (ct + 42) +
+    ' Q' + f(160, ct + 54) + ' ' + f(150, ct + 56);
 
   let solid = '';
   const scoop =
@@ -192,13 +197,14 @@ export function garmentPaths(g: Pick<Garment, 'points' | 'parts'>): GarmentPaths
   }
   if (waist === 'Drawcord') {
     solid +=
-      ' M' + f(142, top - 6) + ' Q' + f(136, top + 26) + ' ' + f(142, top + 46) +
-      ' M' + f(158, top - 6) + ' Q' + f(164, top + 26) + ' ' + f(158, top + 46);
+      ' M' + f(142, ct - 6) + ' Q' + f(136, ct + 26) + ' ' + f(142, ct + 46) +
+      ' M' + f(158, ct - 6) + ' Q' + f(164, ct + 26) + ' ' + f(158, ct + 46);
   }
   if (waist === 'Belt loops') {
     [0.1, 0.3, 0.7, 0.9].forEach((t) => {
       const x = wl.x + (wr.x - wl.x) * t;
-      solid += ' M' + f(x, top - 16) + ' V' + (top + 2);
+      const dip = sag * 4 * t * (1 - t);
+      solid += ' M' + f(x, top - 16 + dip) + ' V' + (top + 2 + dip);
     });
   }
   let strap = '';

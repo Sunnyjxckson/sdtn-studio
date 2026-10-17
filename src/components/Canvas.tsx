@@ -6,7 +6,8 @@ import { fitToArtboard, setCanvasSize, zoomBy } from '../viewport';
 import { Artboard, CroquisView } from './CroquisView';
 import { GarmentView } from './GarmentView';
 import { notePaths } from '../model/note';
-import { IDENTITY_RIG, matStr, poseForward, poseInverse, poseRig } from '../model/figure';
+import { bodyProfile, IDENTITY_RIG, poseRig, poseUnwarp } from '../model/figure';
+import { fitGarment } from '../model/conform';
 import { getCroquis } from '../model/croquis';
 
 type Drag =
@@ -102,11 +103,14 @@ export function Canvas() {
   const world = (e: { clientX: number; clientY: number }) => clientToLocal(worldRef.current, e.clientX, e.clientY);
   const cq = getCroquis(doc.base.sex, doc.base.view);
   const rig = tab === 'sketch' ? poseRig(doc.base.sex, doc.base.pose, cq.waistY, cq.hemY) : IDENTITY_RIG;
+  const body = bodyProfile(doc.base.sex, doc.base.pose);
+  const sag = doc.base.view === 'front' ? 6 : 3;
+  const fitOf = (g: Garment) => fitGarment(g, rig, body, sag);
   const garmentById = (id: string | null): Garment | undefined => doc.garments.find((g) => g.id === id);
   /** Pointer to garment space, undoing the pose and the garment transform. */
   const local = (gid: string, e: { clientX: number; clientY: number }) => {
     const g = garmentById(gid) ?? useStore.getState().doc.garments.find((x) => x.id === gid);
-    const q = poseInverse(rig, world(e));
+    const q = poseUnwarp(rig, world(e));
     if (!g) return q;
     const t = g.transform;
     return { x: Math.round(((q.x - t.x) / t.scale) * 10) / 10, y: Math.round(((q.y - t.y) / t.scale) * 10) / 10 };
@@ -361,6 +365,7 @@ export function Canvas() {
   const sel = garmentById(selectedId);
   const showHandles = !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
   const handleR = 6 / view.k;
+  const selFit = showHandles && sel ? fitOf(sel) : null;
 
   const cursor =
     panning ? 'grabbing' : space || tool === 'hand' ? 'grab' : tool === 'move' ? 'default' : 'crosshair';
@@ -382,24 +387,23 @@ export function Canvas() {
         {tab === 'sketch' && <CroquisView sex={doc.base.sex} view={doc.base.view} pose={doc.base.pose} rendered={rendered} skin={doc.base.skin} />}
         {doc.garments.map((g) => {
           if (!g.visible) return null;
-          const gv = <GarmentView g={g} selectedText={g.id === selectedId ? selectedText : null} showCut={g.id === selectedId} rendered={rendered} shading={doc.settings.shading} />;
-          if (rig.identity) return <g key={g.id}>{gv}</g>;
-          // pose: draw the garment once, then place each piece (hips, thighs, shins) with its bone transform
-          return (
-            <g key={g.id}>
-              <defs>
-                <g id={`gp-${g.id}`}>{gv}</g>
-              </defs>
-              {rig.regions.map((r) => (
-                <g key={r.id} transform={matStr(r.m)}>
-                  <clipPath id={`rc-${g.id}-${r.id}`}>
-                    <rect x={r.clip.x0} y={r.clip.y0} width={r.clip.x1 - r.clip.x0} height={r.clip.y1 - r.clip.y0} />
-                  </clipPath>
-                  <use href={`#gp-${g.id}`} clipPath={`url(#rc-${g.id}-${r.id})`} data-kind="posed" data-gid={g.id} />
-                </g>
-              ))}
-            </g>
-          );
+          const fit = fitOf(g);
+          const common = {
+            selectedText: g.id === selectedId ? selectedText : null,
+            showCut: g.id === selectedId && rig.identity,
+            rendered,
+            shading: doc.settings.shading,
+            sag: rig.identity ? 0 : sag,
+          };
+          if (fit.layers) {
+            return (
+              <g key={g.id}>
+                <GarmentView g={fit.layers.back.g} edge={fit.layers.back.edge} legOnly dim layer="-back" {...common} />
+                <GarmentView g={fit.layers.front.g} edge={fit.layers.front.edge} {...common} />
+              </g>
+            );
+          }
+          return <GarmentView key={g.id} g={fit.g} {...common} />;
         })}
         {doc.notes.map((n) => {
           const { arrow, head } = notePaths(n);
@@ -430,9 +434,11 @@ export function Canvas() {
         })}
         {showHandles && sel && (
           <g>
-            {sel.points.map((p, i) => {
+            {sel.points.map((p0, i) => {
+              const fit = selFit ?? fitOf(sel);
+              const p = fit.g.points[fit.index[i]] ?? p0;
               const t = sel.transform;
-              const { x, y } = poseForward(rig, { x: t.x + p.x * t.scale, y: t.y + p.y * t.scale });
+              const x = t.x + p.x * t.scale, y = t.y + p.y * t.scale;
               return (
                 <g key={i}>
                   <circle cx={x} cy={y} r={handleR * 2.2} fill="transparent" data-kind="pt" data-i={i} data-gid={sel.id} style={{ cursor: tool === 'erase' ? 'crosshair' : 'grab' }} />

@@ -552,6 +552,8 @@ export interface Region {
   id: string;
   /** Membership rectangle in stand canvas space. */
   rect: { x0: number; y0: number; x1: number; y1: number };
+  /** Pieces of the leg furthest from the viewer, drawn a little darker. */
+  back?: boolean;
   /** Clip rectangle, a little larger so pieces overlap at the joints. */
   clip: { x0: number; y0: number; x1: number; y1: number };
   m: Mat;
@@ -665,13 +667,16 @@ export function poseRig(sex: Sex, pose: PoseId, waistY: number, hemY: number): P
     const knee0 = P(CX + sign * REF.legKnee * sc, ref.knee);
     const hem0 = P(CX + sign * REF.legHem * sc, ref.hem);
     const xs = s === 0 ? { x0: -BIG, x1: CX } : { x0: CX, x1: BIG };
+    const back = s === k.legOrder[0] && Math.abs(k.legs[0][2].y - k.legs[1][2].y) > 8;
     regions.push({
+      back,
       id: s === 0 ? 'tL' : 'tR',
       rect: { ...xs, y0: ref.crotch, y1: ref.knee },
       clip: { x0: xs.x0 - (s === 1 ? 0.5 : 0), x1: xs.x1 + (s === 0 ? 0.5 : 0), y0: ref.crotch - 2, y1: ref.knee + pad },
       m: boneFit(top0, knee0, top1, c[1], ACROSS.thigh),
     });
     regions.push({
+      back,
       id: s === 0 ? 'sL' : 'sR',
       rect: { ...xs, y0: ref.knee, y1: BIG },
       clip: { x0: xs.x0 - (s === 1 ? 0.5 : 0), x1: xs.x1 + (s === 0 ? 0.5 : 0), y0: ref.knee - 2, y1: BIG },
@@ -681,6 +686,103 @@ export function poseRig(sex: Sex, pose: PoseId, waistY: number, hemY: number): P
   const out = { identity: false, regions };
   rigCache.set(key, out);
   return out;
+}
+
+
+// ---------- body widths, for fitting garments to the body ----------
+export interface BoneProf {
+  a: Vec;
+  b: Vec;
+  /** [t along the bone, distance to the body edge] on the screen-left and screen-right side. */
+  left: [number, number][];
+  right: [number, number][];
+}
+export interface BodyProfile {
+  /** Per leg (screen left first): thigh then shin. */
+  legs: [BoneProf[], BoneProf[]];
+  /** Body edge x on each side, by canvas y, from the waist to the crotch. */
+  hips: { y: number; l: number; r: number }[];
+}
+
+/** Body widths measured off the licensed walking croquis outlines (canvas units, either side of each bone). */
+const STOCK_PROFILE: BodyProfile = {
+  legs: [
+    [{ a: P(264, 446), b: P(281, 658), left: [[0.1, 36.2], [0.2, 35.4], [0.3, 33.9], [0.4, 32.0], [0.5, 29.6], [0.6, 27.1], [0.7, 24.7], [0.8, 22.2], [0.9, 19.8], [1.0, 18.6]], right: [[0.1, 29.9], [0.2, 29.5], [0.3, 27.7], [0.4, 26.0], [0.5, 24.1], [0.6, 21.5], [0.7, 19.1], [0.8, 17.5], [0.9, 16.8], [1.0, 15.9]] }, { a: P(281, 658), b: P(312, 884), left: [[0.0, 18.6], [0.1, 20.7], [0.2, 22.1], [0.3, 20.3], [0.4, 18.7], [0.5, 16.4], [0.6, 14.1], [0.7, 11.7], [0.8, 9.2], [0.9, 6.7], [1.0, 6.7]], right: [[0.0, 16.0], [0.1, 17.9], [0.2, 20.7], [0.3, 21.1], [0.4, 19.3], [0.5, 17.4], [0.6, 15.5], [0.7, 13.4], [0.8, 13.0], [0.9, 13.0], [1.0, 13.0]] }],
+    [{ a: P(336, 446), b: P(335, 640), left: [[0.1, 33.4], [0.2, 34.9], [0.3, 33.7], [0.4, 31.4], [0.5, 27.9], [0.6, 24.0], [0.7, 21.0], [0.8, 18.4], [0.9, 17.4], [1.0, 18.5]], right: [[0.1, 34.3], [0.2, 32.8], [0.3, 31.0], [0.4, 28.5], [0.5, 25.5], [0.6, 22.4], [0.7, 19.3], [0.8, 17.1], [0.9, 16.7], [1.0, 16.9]] }, { a: P(335, 640), b: P(324, 790), left: [[0.0, 18.3], [0.1, 20.0], [0.2, 21.1], [0.3, 21.1], [0.4, 19.1], [0.5, 16.8], [0.6, 14.6], [0.7, 12.6], [0.8, 10.4], [0.9, 9.3], [1.0, 8.3]], right: [[0.0, 16.9], [0.1, 18.1], [0.2, 18.3], [0.3, 18.2], [0.4, 17.7], [0.5, 16.7], [0.6, 15.5], [0.7, 13.9], [0.8, 12.0], [0.9, 10.6], [1.0, 10.6]] }],
+  ],
+  hips: [{y: 330, l: 258.6, r: 341.5}, {y: 336, l: 259.4, r: 340.7}, {y: 342, l: 257.8, r: 342.3}, {y: 348, l: 255.2, r: 344.9}, {y: 354, l: 252.5, r: 347.6}, {y: 360, l: 249.7, r: 350.4}, {y: 366, l: 247.0, r: 353.1}, {y: 372, l: 244.3, r: 355.8}, {y: 378, l: 241.7, r: 358.4}, {y: 384, l: 239.4, r: 360.7}, {y: 390, l: 237.7, r: 362.4}, {y: 396, l: 236.1, r: 364.0}, {y: 402, l: 234.7, r: 365.4}, {y: 408, l: 233.5, r: 366.6}, {y: 414, l: 232.4, r: 367.7}, {y: 420, l: 231.3, r: 368.8}, {y: 426, l: 230.4, r: 369.7}, {y: 432, l: 229.7, r: 370.4}, {y: 438, l: 229.0, r: 371.1}, {y: 444, l: 228.5, r: 371.5}, {y: 450, l: 228.4, r: 371.6}],
+};
+
+function interpY(pts: Vec[], y: number): number | null {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if ((y - a.y) * (y - b.y) <= 0 && a.y !== b.y) return a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x);
+  }
+  return null;
+}
+
+const profCache = new Map<string, BodyProfile>();
+
+/** How wide the body is around each leg bone and across the hips, in the posed canvas. */
+export function bodyProfile(sex: Sex, pose: PoseId): BodyProfile {
+  if (usesStock(sex, pose)) return STOCK_PROFILE;
+  const key = `${sex}:${pose}`;
+  const hit = profCache.get(key);
+  if (hit) return hit;
+  const r = buildRig(sex, pose);
+  const b = r.b;
+  const legs = [0, 1].map((s) => {
+    const c = r.leg[s];
+    return [b.thigh, b.shin].map((prof, i) => {
+      const outer = prof.filter((e) => e[1] > 0).map((e) => [e[0], e[1]] as [number, number]);
+      const inner = prof.filter((e) => e[2] > 0).map((e) => [e[0], e[2]] as [number, number]);
+      return { a: c[i], b: c[i + 1], left: s === 0 ? outer : inner, right: s === 0 ? inner : outer };
+    });
+  }) as [BoneProf[], BoneProf[]];
+  const sideL = b.side.map((p) => torsoPt(r, P(p.x, p.y)));
+  const sideR = b.side.map((p) => torsoPt(r, P(-p.x, p.y)));
+  const hips: BodyProfile['hips'] = [];
+  for (let y = b.waistY - 12; y < b.crotchY - 2; y += 6) {
+    const l = interpY(sideL, y), rr = interpY(sideR, y);
+    if (l != null && rr != null) hips.push({ y, l, r: rr });
+  }
+  const out = { legs, hips };
+  profCache.set(key, out);
+  return out;
+}
+
+/** Garment units over which neighbouring pieces blend, so joints bend smoothly. */
+const BLEND = 22;
+
+/** Smooth version of poseForward: pieces blend near the crotch and knee lines. */
+export function poseWarp(rig: PoseRigOut, q: Vec): Vec {
+  if (rig.identity) return q;
+  let sx = 0, sy = 0, sw = 0;
+  for (const r of rig.regions) {
+    if (q.x < r.rect.x0 || q.x >= r.rect.x1) continue;
+    const dy = q.y < r.rect.y0 ? r.rect.y0 - q.y : q.y > r.rect.y1 ? q.y - r.rect.y1 : 0;
+    let w = 1 - dy / BLEND;
+    if (w <= 0) continue;
+    w = w * w * (3 - 2 * w);
+    const p = matApply(r.m, q);
+    sx += p.x * w;
+    sy += p.y * w;
+    sw += w;
+  }
+  return sw ? P(sx / sw, sy / sw) : poseForward(rig, q);
+}
+
+/** Undo poseWarp by fixed-point refinement from the piecewise inverse. */
+export function poseUnwarp(rig: PoseRigOut, p: Vec): Vec {
+  if (rig.identity) return p;
+  let q = poseInverse(rig, p);
+  for (let i = 0; i < 8; i++) {
+    const f = poseWarp(rig, q);
+    const ex = p.x - f.x, ey = p.y - f.y;
+    if (Math.abs(ex) + Math.abs(ey) < 0.05) break;
+    q = P(q.x + ex, q.y + ey);
+  }
+  return q;
 }
 
 export const IDENTITY_RIG: PoseRigOut = { identity: true, regions: [] };

@@ -9,9 +9,12 @@ export interface Stroke {
 
 const n1 = (x: number) => x.toFixed(1);
 
+const has = (g: Garment, ...keys: string[]) => keys.every((k) => g.points.some((p) => p.key === k));
+
 function bottomY(g: Garment): number {
   const p = g.points;
-  const hem = Math.max(findPoint(p, 'hemLo').y, findPoint(p, 'hemLi').y);
+  const ys = ['hemLo', 'hemLi', 'hemRo', 'hemRi'].filter((k) => has(g, k)).map((k) => findPoint(p, k).y);
+  const hem = ys.length ? Math.max(...ys) : 0;
   return Math.min(g.cropY ?? Infinity, hem);
 }
 
@@ -37,12 +40,12 @@ export function foldStrokes(g: Garment): Stroke[] {
   };
 
   // knees
-  across(findPoint(p, 'kneeLo'), findPoint(p, 'kneeLi'), findPoint(p, 'kneeLo').y - 4, 4, 11, 0.4, 0.35);
-  across(findPoint(p, 'kneeRo'), findPoint(p, 'kneeRi'), findPoint(p, 'kneeRo').y - 4, 4, 11, 0.4, 0.35);
+  if (has(g, 'kneeLo', 'kneeLi')) across(findPoint(p, 'kneeLo'), findPoint(p, 'kneeLi'), findPoint(p, 'kneeLo').y - 4, 4, 11, 0.4, 0.35);
+  if (has(g, 'kneeRo', 'kneeRi')) across(findPoint(p, 'kneeRo'), findPoint(p, 'kneeRi'), findPoint(p, 'kneeRo').y - 4, 4, 11, 0.4, 0.35);
 
   // crotch: strokes fanning up and out
   const cr = findPoint(p, 'crotch');
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < (has(g, 'crotch', 'waistL') ? 6 : 0); k++) {
     const side = k % 2 ? 1 : -1;
     const sx = cr.x + side * (2 + r() * 3);
     const sy = cr.y - 2 - r() * 4;
@@ -53,8 +56,8 @@ export function foldStrokes(g: Garment): Stroke[] {
 
   // hem stacking
   const hemO = (k: string) => ({ x: findPoint(p, k).x, y: bottom });
-  across(hemO('hemLo'), hemO('hemLi'), bottom - 16, 2, 11, 0.3, 0.3);
-  across(hemO('hemRo'), hemO('hemRi'), bottom - 16, 2, 11, 0.3, 0.3);
+  if (has(g, 'hemLo', 'hemLi')) across(hemO('hemLo'), hemO('hemLi'), bottom - 16, 2, 11, 0.3, 0.3);
+  if (has(g, 'hemRo', 'hemRi')) across(hemO('hemRo'), hemO('hemRi'), bottom - 16, 2, 11, 0.3, 0.3);
   return out;
 }
 
@@ -74,6 +77,7 @@ export function highlightStrokes(g: Garment): Stroke[] {
     { f: 0.7, a: 0.5, b: 0.85, w: 1.6, o: 0.22 },
   ];
   for (const [outer, inner] of legs) {
+    if (!has(g, ...outer, ...inner)) continue;
     const O = outer.map((k) => findPoint(p, k));
     const I = inner.map((k) => findPoint(p, k));
     for (const s of specs) {

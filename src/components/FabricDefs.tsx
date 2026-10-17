@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { findPoint, WASHES, type Garment } from '../model/garment';
+import { WASHES, type Garment } from '../model/garment';
 import { mix } from '../model/color';
 
 export const fabricId = (g: Garment) => `fab-${g.id}`;
@@ -21,8 +21,11 @@ export function FabricDefs({ g }: { g: Garment }) {
   const base = WASHES[g.wash];
   const light = mix(base, '#ffffff', 0.4);
   const dark = mix(base, '#000000', 0.45);
-  const top = findPoint(g.points, 'waistL').y - 14;
-  const hem = Math.max(findPoint(g.points, 'hemLo').y, findPoint(g.points, 'hemLi').y);
+  // from the points themselves, so a garment drawn as two layers gets the same gradient in both
+  const ys = g.points.map((p) => p.y);
+  const banded = g.points.some((p) => p.key === 'waistL' || p.key === 'waistR');
+  const top = Math.min(...ys) - (banded ? 14 : 0);
+  const hem = Math.max(...ys);
   const span = hem - top;
   const at = (f: number) => `${((top + span * f) | 0)}`;
   let tile: ReactNode;
