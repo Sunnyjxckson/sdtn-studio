@@ -28,9 +28,7 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
 
   for (const s of [-1, 1] as const) {
     // pull from the underarm toward the bust or chest
-    out.push({ pts: [T(s * 0.98, 0.33), T(s * (0.8 + j(0.05)), 0.4), T(s * (0.58 + j(0.06)), bust ? 0.44 : 0.47)], w: 2.6 + loose, o: 0.3, ridge: true });
-    out.push({ pts: [T(s * 0.97, 0.38), T(s * 0.82, 0.5 + j(0.03)), T(s * (0.66 + j(0.05)), 0.58)], w: 2 + loose, o: 0.22, ridge: false });
-    if (bust && loose < 1) out.push({ pts: [T(s * 0.86, 0.46), T(s * 0.55, 0.5), T(s * 0.18, 0.45)], w: 3.2, o: 0.2, ridge: false });
+    out.push({ pts: [T(s * 0.94, 0.36), T(s * (0.8 + j(0.05)), 0.42), T(s * (0.6 + j(0.06)), bust ? 0.45 : 0.48)], w: 2.6 + loose, o: 0.3, ridge: true });
     // gather at the waist where a fitted or regular top bunches
     if (hemV > 0.9 && loose < 1) {
       for (let k = 0; k < 2; k++) {
@@ -48,7 +46,6 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
       const side = s < 0 ? 'armL' : 'armR';
       const len = o.block === 'Long sleeve' ? 2 : 0.4;
       // folds radiating from the armpit across the sleeve
-      out.push({ pts: [A(side, 0.05, 0.85), A(side, 0.16, 0.25), A(side, 0.26 + j(0.04), -0.35)], w: 2.4 + loose, o: 0.26, ridge: true });
       if (len > 1) {
         // elbow and wrist stacking on long sleeves
         for (const a0 of [0.9, 1.05, 1.75, 1.88]) out.push({ pts: [A(side, a0, -0.9), A(side, a0 + 0.04 + j(0.03), 0), A(side, a0, 0.9)], w: 2, o: 0.24, ridge: a0 < 1 });
@@ -69,8 +66,6 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
     // a long diagonal pull from the bust toward the far side of the hem, from the walking stride
     out.push({ pts: [T(-0.4, 0.42), T(0.05, 0.75), T(0.55, hemV - 0.05)], w: 4 + loose * 2, o: 0.14, ridge: true });
   }
-  // collar bone drag under the neckline
-  out.push({ pts: [T(-0.32, 0.12), T(0, 0.16 + (o.neck === 'Crew' ? 0 : 0.08)), T(0.32, 0.12)], w: 1.8, o: 0.12, ridge: false });
   if (o.tuck) {
     for (let k = 0; k < 5; k++) {
       const u = -0.8 + k * 0.4 + j(0.1);

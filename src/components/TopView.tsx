@@ -119,54 +119,28 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
         <path d={body} fill={fill} stroke={outline} strokeWidth={rendered ? 0.9 : 1.5} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />
         {rendered && shading && (
           <g clipPath={`url(#${clip})`} pointerEvents="none">
+            {/* light from the upper left: one soft shadow side, like marker shading */}
             <rect x={0} y={0} width={600} height={1000} fill={`url(#tl-${uid})`} />
-            <path d={body} fill="none" stroke="#000" strokeWidth={7} opacity={dark ? 0.36 : 0.16} filter={`url(#tb-${uid})`} style={{ mixBlendMode: 'multiply' }} />
-            {/* round shading: darker toward the sides so the torso reads as a body */}
-            <path d={body} fill="none" stroke="#000" strokeWidth={22} opacity={dark ? 0.22 : 0.1} filter={`url(#tb-${uid})`} style={{ mixBlendMode: 'multiply' }} />
-            <ellipse cx={F(-0.35, 0.3).x} cy={F(-0.35, 0.3).y} rx={26} ry={34} fill="#fff" opacity={dark ? 0.08 : 0.35} filter={`url(#tb-${uid})`} />
-            {/* the body underneath: bust volume pushes the fabric out, lit on top and shaded underneath */}
-            {bust &&
+            <path d={body} fill="none" stroke={shadeC} strokeWidth={14} opacity={dark ? 0.35 : 0.14} filter={`url(#tb-${uid})`} transform="translate(-4 0)" />
+            {bust && stiff < 0.6 &&
               [-1, 1].map((sx) => {
-                const c = F(sx * 0.46, 0.4);
-                const k = 1 - stiff * 0.7;
-                return (
-                  <g key={sx} opacity={k} filter={`url(#tb-${uid})`}>
-                    <path d={`M${f1(c.x - 17)},${f1(c.y + 2)} Q${f1(c.x)},${f1(c.y + 15)} ${f1(c.x + 17)},${f1(c.y + 1)}`} fill="none" stroke="#000" strokeWidth={5} opacity={dark ? 0.3 : 0.12} />
-                    <ellipse cx={c.x - sx * 3} cy={c.y - 5} rx={9} ry={7} fill="#fff" opacity={dark ? 0.08 : 0.22} />
-                  </g>
-                );
+                const c = F(sx * 0.46, 0.41);
+                return <path key={sx} d={`M${f1(c.x - 15)},${f1(c.y)} Q${f1(c.x)},${f1(c.y + 11)} ${f1(c.x + 15)},${f1(c.y - 1)}`} fill="none" stroke={shadeC} strokeWidth={6} opacity={dark ? 0.3 : 0.13} filter={`url(#tb-${uid})`} />;
               })}
-            {/* the edges turn under: a soft dark line just inside every hem and the neckline */}
-            <g fill="none" stroke="#000" strokeLinecap="round" filter={`url(#tf-${uid})`} opacity={dark ? 0.4 : 0.22}>
-              {shape.hems.map((h, i) => (
-                <path key={i} d={line(h)} strokeWidth={3} transform="translate(0 -1.5)" />
-              ))}
-              <path d={line(shape.neckline)} strokeWidth={2.5} transform="translate(0 1.5)" />
-            </g>
+          </g>
+        )}
+        {rendered && (
+          <g clipPath={`url(#${clip})`} pointerEvents="none">
+            {/* fold lines drawn like ink: thin, tapered, no glow */}
             {folds.map((fd, i) => {
               const c = sample(fd.pts.map((p) => topForward(t, p, stiff)));
-              return (
-                <g key={i}>
-                  <path d={ribbon(c, fd.w)} fill={shadeC} opacity={fd.o * (dark ? 1.3 : 1)} filter={`url(#tf-${uid})`} />
-                  {fd.ridge && <path d={ribbon(c, fd.w * 0.7, fd.w * 0.9)} fill="#fff" opacity={dark ? 0.1 : 0.55} filter={`url(#tf-${uid})`} />}
-                </g>
-              );
+              return <path key={i} d={ribbon(c, Math.min(1.8, 0.6 + fd.w * 0.22))} fill={outline} opacity={Math.min(0.75, 0.25 + fd.o * 1.6)} />;
             })}
           </g>
         )}
-        {/* neckline binding, sleeve and body hems */}
+        {/* neckline binding */}
         <g fill="none" pointerEvents="none" strokeLinecap="round">
-          {armholes.map((d, i) => (
-            <g key={`ah${i}`} clipPath={`url(#${clip})`}>
-              <path d={d} stroke={shadeC} strokeWidth={rendered ? 3 : 0} opacity={0.12} filter={rendered ? `url(#tf-${uid})` : undefined} />
-              <path d={d} stroke={outline} strokeWidth={rendered ? 0.7 : 1} opacity={rendered ? 0.7 : 0.9} />
-            </g>
-          ))}
-          <path d={line(shape.neckline)} stroke={outline} strokeWidth={rendered ? 3.2 : 1.2} opacity={rendered ? 0.22 : 1} />
-          <path d={line(shape.neckline)} stroke={outline} strokeWidth={0.7} strokeDasharray={rendered ? '2 1.4' : undefined} transform="translate(0 2.6)" opacity={0.7} />
-          {shape.hems.map((h, i) => (
-            <path key={i} d={line(h)} stroke={outline} strokeWidth={0.7} strokeDasharray="2 1.4" transform={`translate(0 ${-2.8})`} opacity={0.65} />
-          ))}
+          <path d={line(shape.neckline)} stroke={outline} strokeWidth={0.8} transform="translate(0 3)" opacity={0.8} />
         </g>
         <g clipPath={`url(#${clip})`}>
           {g.distress.map((d, i) => {

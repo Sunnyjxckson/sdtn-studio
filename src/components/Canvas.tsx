@@ -491,7 +491,7 @@ export function Canvas() {
                   .map((g) => {
                     const sh = topShape(torso, g.points, stiffOf(g.top));
                     return sh.hems.map((h, i) => (
-                      <path key={`${g.id}${i}`} d={'M' + h.map((p) => `${p.x.toFixed(1)},${(p.y + 3).toFixed(1)}`).join(' L')} strokeWidth={4} opacity={0.22} />
+                      <path key={`${g.id}${i}`} d={'M' + h.map((p) => `${p.x.toFixed(1)},${(p.y + 3).toFixed(1)}`).join(' L')} strokeWidth={3} opacity={0.12} />
                     ));
                   })}
               </g>
