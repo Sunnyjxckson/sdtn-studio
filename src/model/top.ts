@@ -30,9 +30,9 @@ const armPt = (side: 'armL' | 'armR', a: number, o: number, key?: string): Pt =>
 export const uv = (p: { x: number; y: number }) => ({ u: (p.x - 150) / 100, v: (p.y - 100) / 200 });
 
 const EASE: Record<TopFit, { body: number; waist: number; sleeve: number; shoulder: number; drop: number }> = {
-  Fitted: { body: 1.04, waist: 1.0, sleeve: 1.12, shoulder: 0.98, drop: 0 },
-  Regular: { body: 1.12, waist: 1.12, sleeve: 1.4, shoulder: 1.02, drop: 0.04 },
-  Oversized: { body: 1.32, waist: 1.36, sleeve: 1.85, shoulder: 1.2, drop: 0.16 },
+  Fitted: { body: 1.04, waist: 1.0, sleeve: 1.1, shoulder: 1.04, drop: 0 },
+  Regular: { body: 1.1, waist: 1.1, sleeve: 1.26, shoulder: 1.07, drop: 0.03 },
+  Oversized: { body: 1.26, waist: 1.3, sleeve: 1.55, shoulder: 1.2, drop: 0.12 },
 };
 const LENGTH_V: Record<TopLength, number> = { Crop: 0.8, Waist: 1.04, Hip: 1.42, Long: 1.7 };
 const NECK_V: Record<NeckKind, number> = { Crew: 0.07, Scoop: 0.17, V: 0.27 };
@@ -51,9 +51,10 @@ export function buildTopPoints(o: TopOpts): Pt[] {
       out.push(torsoPt(s * e.body, 0.36, `arm${k}`));
     } else {
       const sleeveLen = o.block === 'Long sleeve' ? 2.02 : o.fit === 'Fitted' && o.length === 'Crop' ? 0.3 : 0.44;
-      out.push(torsoPt(s * e.shoulder, 0.0, `sh${k}`));
-      out.push(armPt(arm, sleeveLen + e.drop, -e.sleeve, `slO${k}`));
-      out.push(armPt(arm, sleeveLen + e.drop - 0.03, e.sleeve, `slI${k}`));
+      out.push(torsoPt(s * e.shoulder, -0.015, `sh${k}`));
+      // sleeves open out a little toward the hem
+      out.push(armPt(arm, sleeveLen + e.drop, -(e.sleeve + 0.14), `slO${k}`));
+      out.push(armPt(arm, sleeveLen + e.drop - 0.05, e.sleeve + 0.06, `slI${k}`));
       out.push(torsoPt(s * e.body, 0.32 + e.drop, `arm${k}`));
     }
     out.push(torsoPt(s * (o.length === 'Crop' && !o.tuck ? e.body * 0.97 : e.waist), Math.min(1, len - 0.02), `side${k}`));
@@ -259,9 +260,14 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0): TopShape {
       const tp = a.r ? b : a, ap = a.r ? a : b;
       const start = topInverse(t, F(tp), arm, stiff);
       const runA = Math.max(0.04, Math.min(start.x / 100, 0.14));
-      const o = (ap.y - 100) / 100;
+      // the cap hugs the arm (outer side from the shoulder, inner side from the underarm) and eases out to the hem
+      const oHem = (ap.y - 100) / 100;
+      const oCap = /^sh/.test(key(tp)) ? -1.04 : 0.8;
       const mid: Pt[] = [];
-      for (let k = 1; k <= 6; k++) mid.push({ x: (runA + ((ap.x / 100 - runA) * k) / 7) * 100, y: 100 + o * 100, r: arm });
+      for (let k = 1; k <= 6; k++) {
+        const f = k / 7;
+        mid.push({ x: (runA + (ap.x / 100 - runA) * f) * 100, y: 100 + (oCap + (oHem - oCap) * f) * 100, r: arm });
+      }
       if (a.r) mid.reverse();
       steps.push(...mid);
     }
@@ -272,6 +278,29 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0): TopShape {
     if (key(a) === 'hemL' && key(b) === 'hemR') hems.push([F(a), ...steps.map(F), F(b)]);
     if (a.r === 'armL' || b.r === 'armL') sleeveRun.L.push(F(a), ...steps.map(F));
     if (a.r === 'armR' || b.r === 'armR') sleeveRun.R.push(F(a), ...steps.map(F));
+  }
+  // where an arm hangs over the body, keep the sleeve's inner edge on the body's side seam
+  // instead of drawing a seam line across the front
+  const ease = (k: string) => Math.abs(uv(points.find((p) => p.key === k) ?? torsoPt(1, 0)).u);
+  const eL = ease('armL'), eR = ease('armR');
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    if (i === iNF) continue;
+    const a = points[i];
+    const start = index[i];
+    const end = i + 1 < n && i + 1 !== iNF ? index[i + 1] : outline.length;
+    const b = points[(i + 1) % n];
+    const inner = (/^slI/.test(key(a)) && /^arm/.test(key(b))) || (/^arm/.test(key(a)) && /^slI/.test(key(b)));
+    if (inner) {
+      // the run between the sleeve's inner hem and the underarm
+      const side = (a.r ?? b.r) as 'armL' | 'armR';
+      for (j = start; j <= Math.min(end, outline.length - 1); j++) {
+        const p = outline[j];
+        const { c, h } = halfAt(t, p.y, stiff);
+        if (side === 'armL') outline[j] = { x: Math.min(p.x, c - h * eL), y: p.y };
+        else outline[j] = { x: Math.max(p.x, c + h * eR), y: p.y };
+      }
+    }
   }
   const sleeves = [sleeveRun.L, sleeveRun.R].filter((x) => x.length > 2);
   return { outline, index, neckline, hems, sleeves };

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { WASHES, isDarkWash, type Garment } from '../model/garment';
-import type { TorsoProfile, Vec } from '../model/figure';
+import { smooth, type TorsoProfile, type Vec } from '../model/figure';
 import { stiffOf, topForward, topShape, torsoPt } from '../model/top';
 import { mix } from '../model/color';
 import { polyPath, ripPoly, ripThreads, wornPatch } from '../model/rips';
@@ -24,7 +24,7 @@ interface Props {
 export const TopView = memo(function TopView({ g, t, rendered, shading, selectedText, bust }: Props) {
   const stiff = stiffOf(g.top);
   const shape = topShape(t, g.points, stiff);
-  const body = line(shape.outline, true);
+  const body = smooth(shape.outline, true);
   const base = WASHES[g.wash];
   const dark = isDarkWash(g.wash);
   const outline = rendered ? mix(base, '#000000', dark ? 0.55 : 0.45) : '#141414';
@@ -74,22 +74,14 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
           <g clipPath={`url(#${clip})`} pointerEvents="none">
             <rect x={0} y={0} width={600} height={1000} fill={`url(#tl-${uid})`} />
             <path d={body} fill="none" stroke="#000" strokeWidth={7} opacity={dark ? 0.36 : 0.16} filter={`url(#tb-${uid})`} style={{ mixBlendMode: 'multiply' }} />
-            {/* fold where the sleeve meets the body */}
-            <g fill="none" stroke="#000" strokeWidth={3} opacity={dark ? 0.3 : 0.16} filter={`url(#ts-${uid})`}>
-              <path d={line([F(-0.98, 0.1), F(-1.02, 0.22), F(-1.0, 0.34)])} />
-              <path d={line([F(0.98, 0.1), F(1.02, 0.22), F(1.0, 0.34)])} />
-            </g>
             {bust && (
-              <g fill="none" stroke="#000" strokeWidth={4} opacity={dark ? 0.3 : 0.18} filter={`url(#ts-${uid})`}>
-                <path d={line([F(-0.92, 0.36), F(-0.7, 0.46), F(-0.35, 0.47), F(-0.08, 0.39)])} />
-                <path d={line([F(0.08, 0.39), F(0.35, 0.47), F(0.7, 0.46), F(0.92, 0.36)])} />
+              <g fill="#000" opacity={dark ? 0.18 : 0.08} filter={`url(#tb-${uid})`}>
+                <ellipse cx={F(-0.5, 0.47).x} cy={F(-0.5, 0.47).y} rx={14} ry={5} />
+                <ellipse cx={F(0.5, 0.47).x} cy={F(0.5, 0.47).y} rx={14} ry={5} />
               </g>
             )}
-            {bust && <ellipse cx={F(-0.5, 0.36).x} cy={F(-0.5, 0.36).y} rx={9} ry={7} fill="#fff" opacity={dark ? 0.12 : 0.3} filter={`url(#tb-${uid})`} />}
             {/* tension folds from the underarm, and drape on looser fits */}
             <g fill="none" stroke="#000" strokeLinecap="round" opacity={dark ? 0.32 : 0.2} filter={`url(#ts-${uid})`}>
-              <path d={line([F(-1.0, 0.36), F(-0.78, 0.45), F(-0.62, 0.52)])} strokeWidth={2} />
-              <path d={line([F(1.0, 0.36), F(0.78, 0.45), F(0.62, 0.52)])} strokeWidth={2} />
               {loose > 0 && (
                 <>
                   <path d={line([F(-0.55, 0.3), F(-0.6, 0.7), F(-0.52, 1.1)])} strokeWidth={5 + loose * 4} opacity={0.25 + loose * 0.25} filter={`url(#tb-${uid})`} />
@@ -104,7 +96,7 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
         <g fill="none" pointerEvents="none" strokeLinecap="round">
           <path d={line(shape.neckline)} stroke={outline} strokeWidth={rendered ? 3.2 : 1.2} opacity={rendered ? 0.22 : 1} />
           <path d={line(shape.neckline)} stroke={outline} strokeWidth={0.7} strokeDasharray={rendered ? '2 1.4' : undefined} transform="translate(0 2.6)" opacity={0.7} />
-          {shape.hems.map((h, i) => (
+          {shape.hems.filter((h) => h.length > 2).map((h, i) => (
             <path key={i} d={line(h)} stroke={outline} strokeWidth={0.7} strokeDasharray="2 1.4" transform={`translate(0 ${-2.8})`} opacity={0.65} />
           ))}
         </g>
