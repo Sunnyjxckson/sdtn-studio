@@ -115,7 +115,6 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
           <stop offset={1} stopColor="#000" stopOpacity={dark ? 0.28 : 0.16} />
         </linearGradient>
       </defs>
-      {rendered && <path d={body} fill="#000" opacity={0.2} filter={`url(#tb-${uid})`} transform="translate(1.5 2)" pointerEvents="none" />}
       <g mask={holes.length ? `url(#tm-${uid})` : undefined}>
         <path d={body} fill={fill} stroke={outline} strokeWidth={rendered ? 0.9 : 1.5} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />
         {rendered && shading && (
@@ -125,6 +124,25 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
             {/* round shading: darker toward the sides so the torso reads as a body */}
             <path d={body} fill="none" stroke="#000" strokeWidth={22} opacity={dark ? 0.22 : 0.1} filter={`url(#tb-${uid})`} style={{ mixBlendMode: 'multiply' }} />
             <ellipse cx={F(-0.35, 0.3).x} cy={F(-0.35, 0.3).y} rx={26} ry={34} fill="#fff" opacity={dark ? 0.08 : 0.35} filter={`url(#tb-${uid})`} />
+            {/* the body underneath: bust volume pushes the fabric out, lit on top and shaded underneath */}
+            {bust &&
+              [-1, 1].map((sx) => {
+                const c = F(sx * 0.46, 0.4);
+                const k = 1 - stiff * 0.7;
+                return (
+                  <g key={sx} opacity={k} filter={`url(#tb-${uid})`}>
+                    <path d={`M${f1(c.x - 17)},${f1(c.y + 2)} Q${f1(c.x)},${f1(c.y + 15)} ${f1(c.x + 17)},${f1(c.y + 1)}`} fill="none" stroke="#000" strokeWidth={5} opacity={dark ? 0.3 : 0.12} />
+                    <ellipse cx={c.x - sx * 3} cy={c.y - 5} rx={9} ry={7} fill="#fff" opacity={dark ? 0.08 : 0.22} />
+                  </g>
+                );
+              })}
+            {/* the edges turn under: a soft dark line just inside every hem and the neckline */}
+            <g fill="none" stroke="#000" strokeLinecap="round" filter={`url(#tf-${uid})`} opacity={dark ? 0.4 : 0.22}>
+              {shape.hems.map((h, i) => (
+                <path key={i} d={line(h)} strokeWidth={3} transform="translate(0 -1.5)" />
+              ))}
+              <path d={line(shape.neckline)} strokeWidth={2.5} transform="translate(0 1.5)" />
+            </g>
             {folds.map((fd, i) => {
               const c = sample(fd.pts.map((p) => topForward(t, p, stiff)));
               return (

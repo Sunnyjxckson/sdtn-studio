@@ -473,6 +473,9 @@ export function Canvas() {
         {tab === 'sketch' && doc.garments.some((g) => g.visible) && (
           <>
             <defs>
+              <filter id="cast-blur" x="-20%" y="-50%" width="140%" height="200%">
+                <feGaussianBlur stdDeviation={2} />
+              </filter>
               <clipPath id="arms-front">
                 {armFront.map((d, i) => (
                   <path key={i} d={d} />
@@ -480,6 +483,19 @@ export function Canvas() {
               </clipPath>
             </defs>
             <use href="#croquis-art" clipPath="url(#arms-front)" pointerEvents="none" />
+            {/* garments cast soft shadows on what is underneath: the arm below each sleeve, the body or jeans below the hem */}
+            {rendered && (
+              <g pointerEvents="none" fill="none" stroke="#000" strokeLinecap="round" filter="url(#cast-blur)">
+                {doc.garments
+                  .filter((g) => g.visible && g.type === 'top')
+                  .map((g) => {
+                    const sh = topShape(torso, g.points, stiffOf(g.top));
+                    return sh.hems.map((h, i) => (
+                      <path key={`${g.id}${i}`} d={'M' + h.map((p) => `${p.x.toFixed(1)},${(p.y + 3).toFixed(1)}`).join(' L')} strokeWidth={4} opacity={0.22} />
+                    ));
+                  })}
+              </g>
+            )}
           </>
         )}
         {doc.notes.map((n) => {
