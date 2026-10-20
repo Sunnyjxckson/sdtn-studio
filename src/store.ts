@@ -28,9 +28,62 @@ import {
 import { placeOnCroquis } from './model/placement';
 import { buildTopPoints, type TopOpts } from './model/top';
 import { newId } from './model/garment';
+import { brushById, MAX_DRAW_LAYERS, newDrawLayer, type BrushId, type DrawLayer, type Drawing, type Stroke } from './model/draw';
 
 export type Tool = 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'note' | 'hand';
-export type Tab = 'sketch' | 'flats' | 'pattern';
+export type Tab = 'sketch' | 'draw' | 'flats' | 'pattern';
+export type DrawTool = 'brush' | 'smudge' | 'erase' | 'fill' | 'eyedrop' | 'hand';
+export type PaintTool = 'brush' | 'smudge' | 'erase';
+
+export interface DrawPrefs {
+  color: string;
+  recent: string[];
+  /** Brush picked for each painting tool. */
+  brush: Record<PaintTool, BrushId>;
+  /** Size and opacity per tool and brush, keyed tool:brush. */
+  size: Record<string, number>;
+  opacity: Record<string, number>;
+  fillTolerance: number;
+}
+
+const PREFS_KEY = 'sdtn-studio:drawprefs:v1';
+const defaultPrefs = (): DrawPrefs => ({
+  color: '#141414',
+  recent: [],
+  brush: { brush: 'pencil', smudge: 'airbrush', erase: 'airbrush' },
+  size: {},
+  opacity: {},
+  fillTolerance: 0.28,
+});
+function loadPrefs(): DrawPrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      const d = defaultPrefs();
+      return { ...d, ...p, brush: { ...d.brush, ...p.brush } };
+    }
+  } catch {
+    // storage blocked
+  }
+  return defaultPrefs();
+}
+export function savePrefs(p: DrawPrefs) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    // storage blocked
+  }
+}
+
+/** Size and opacity of the current brush for a painting tool. */
+export function toolBrush(p: DrawPrefs, t: PaintTool) {
+  const b = brushById(p.brush[t]);
+  const k = `${t}:${b.id}`;
+  const size = p.size[k] ?? (t === 'erase' ? Math.max(b.size, 14) : b.size);
+  const opacity = p.opacity[k] ?? (t === 'smudge' ? 0.7 : t === 'erase' ? 1 : b.opacity);
+  return { brush: b, key: k, size, opacity };
+}
 
 export const HISTORY_LIMIT = 200;
 
@@ -55,6 +108,9 @@ interface State {
   selectedNote: string | null;
   holeSize: HoleSize;
   view: Viewport;
+  drawTool: DrawTool;
+  drawPrefs: DrawPrefs;
+  activeLayer: string | null;
 
   // history
   checkpoint: (coalesce?: string) => void;
@@ -72,6 +128,20 @@ interface State {
   selectNote: (id: string | null) => void;
   setHoleSize: (s: HoleSize) => void;
   setView: (v: Viewport) => void;
+
+  setDrawTool: (t: DrawTool) => void;
+  setDrawPrefs: (fn: (p: Draft<DrawPrefs>) => void) => void;
+  setActiveLayer: (id: string) => void;
+
+  // drawing layers
+  addStroke: (layerId: string, s: Stroke) => void;
+  addDrawLayer: () => void;
+  removeDrawLayer: (id: string) => void;
+  duplicateDrawLayer: (id: string) => void;
+  clearDrawLayer: (id: string) => void;
+  moveDrawLayer: (id: string, dir: 1 | -1) => void;
+  setDrawLayer: (id: string, patch: Partial<Omit<DrawLayer, 'id' | 'strokes'>>, coalesce?: string) => void;
+  setDrawing: (patch: Partial<Omit<Drawing, 'layers'>>, coalesce?: string) => void;
 
   // document edits that create their own undo step
   setBase: (b: { sex?: Sex; view?: View; skin?: SkinId; pose?: PoseId }) => void;
@@ -106,6 +176,15 @@ interface State {
 }
 
 const findG = (doc: Draft<Doc>, id: string) => doc.garments.find((g) => g.id === id);
+const activeIndex = (layers: DrawLayer[], id: string | null) => {
+  const i = layers.findIndex((l) => l.id === id);
+  return i < 0 ? layers.length - 1 : i;
+};
+/** The layer strokes go onto: the picked one, or the top layer if it is gone. */
+export const activeDrawLayer = (s: { doc: Doc; activeLayer: string | null }): DrawLayer => {
+  const ls = s.doc.drawing.layers;
+  return ls[activeIndex(ls, s.activeLayer)];
+};
 
 export const useStore = create<State>()(
   immer((set, get) => {
@@ -131,6 +210,9 @@ export const useStore = create<State>()(
       selectedNote: null,
       holeSize: 'M',
       view: { x: 0, y: 0, k: 1 },
+      drawTool: 'brush',
+      drawPrefs: loadPrefs(),
+      activeLayer: null,
 
       checkpoint: (coalesce) => {
         const s = get();
@@ -208,6 +290,85 @@ export const useStore = create<State>()(
         set((s) => {
           s.view = v;
         }),
+
+      setDrawTool: (t) =>
+        set((s) => {
+          s.drawTool = t;
+        }),
+      setDrawPrefs: (fn) => {
+        set((s) => {
+          fn(s.drawPrefs);
+        });
+        savePrefs(get().drawPrefs);
+      },
+      setActiveLayer: (id) =>
+        set((s) => {
+          s.activeLayer = id;
+        }),
+
+      addStroke: (layerId, st) =>
+        step((d) => {
+          d.drawing.layers.find((l) => l.id === layerId)?.strokes.push(st);
+        }),
+      addDrawLayer: () => {
+        const layers = get().doc.drawing.layers;
+        if (layers.length >= MAX_DRAW_LAYERS) return;
+        const n = Math.max(0, ...layers.map((l) => Number(/^Layer (\d+)$/.exec(l.name)?.[1] ?? 0))) + 1;
+        const nl = newDrawLayer(n);
+        const at = activeIndex(layers, get().activeLayer);
+        step((d) => {
+          d.drawing.layers.splice(at + 1, 0, nl);
+        });
+        set((s) => {
+          s.activeLayer = nl.id;
+        });
+      },
+      removeDrawLayer: (id) => {
+        const layers = get().doc.drawing.layers;
+        const i = layers.findIndex((l) => l.id === id);
+        if (i < 0) return;
+        step((d) => {
+          d.drawing.layers.splice(i, 1);
+          if (d.drawing.layers.length === 0) d.drawing.layers.push(newDrawLayer(1));
+        });
+        set((s) => {
+          const ls = s.doc.drawing.layers;
+          s.activeLayer = ls[Math.max(0, Math.min(i - 1, ls.length - 1))].id;
+        });
+      },
+      duplicateDrawLayer: (id) => {
+        const layers = get().doc.drawing.layers;
+        const i = layers.findIndex((l) => l.id === id);
+        if (i < 0 || layers.length >= MAX_DRAW_LAYERS) return;
+        const copy: DrawLayer = { ...layers[i], id: newId(), name: `${layers[i].name} copy` };
+        step((d) => {
+          d.drawing.layers.splice(i + 1, 0, copy);
+        });
+        set((s) => {
+          s.activeLayer = copy.id;
+        });
+      },
+      clearDrawLayer: (id) =>
+        step((d) => {
+          const l = d.drawing.layers.find((x) => x.id === id);
+          if (l) l.strokes = [];
+        }),
+      moveDrawLayer: (id, dir) => {
+        const arr = get().doc.drawing.layers;
+        const i = arr.findIndex((l) => l.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= arr.length) return;
+        step((d) => {
+          const [l] = d.drawing.layers.splice(i, 1);
+          d.drawing.layers.splice(j, 0, l);
+        });
+      },
+      setDrawLayer: (id, patch, coalesce) =>
+        step((d) => {
+          const l = d.drawing.layers.find((x) => x.id === id);
+          if (l) Object.assign(l, patch);
+        }, coalesce),
+      setDrawing: (patch, coalesce) => step((d) => void Object.assign(d.drawing, patch), coalesce),
 
       setBase: (b) => step((d) => void Object.assign(d.base, b)),
 

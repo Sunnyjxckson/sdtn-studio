@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { loadSaved, save } from './persist';
-import { useStore, type Tool } from './store';
+import { toolBrush, useStore, type DrawTool, type Tool } from './store';
 
 /** Restore from IndexedDB once, then auto-save (debounced) on every document change. */
 export function useAutosave() {
@@ -27,6 +27,8 @@ export function useAutosave() {
 
 const KEYS: Record<string, Tool> = { v: 'move', a: 'add', e: 'erase', c: 'cut', o: 'hole', d: 'distress', t: 'text', n: 'note', h: 'hand' };
 
+const DRAW_KEYS: Record<string, DrawTool> = { b: 'brush', s: 'smudge', e: 'erase', g: 'fill', i: 'eyedrop', h: 'hand' };
+
 export function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -46,6 +48,17 @@ export function useShortcuts() {
         return;
       }
       if (mod || e.altKey) return;
+      if (st.tab === 'draw') {
+        const dt = DRAW_KEYS[e.key.toLowerCase()];
+        if (dt) st.setDrawTool(dt);
+        if (e.key === '[' || e.key === ']') {
+          const t = st.drawTool === 'smudge' || st.drawTool === 'erase' ? st.drawTool : 'brush';
+          const cur = toolBrush(st.drawPrefs, t);
+          const next = Math.max(0.5, Math.min(120, cur.size * (e.key === ']' ? 1.15 : 1 / 1.15)));
+          st.setDrawPrefs((p) => void (p.size[cur.key] = Math.round(next * 10) / 10));
+        }
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && st.selectedId) {
         e.preventDefault();
         st.removeGarment(st.selectedId);

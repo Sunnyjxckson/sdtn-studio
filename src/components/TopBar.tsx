@@ -10,6 +10,7 @@ export function TopBar() {
   const setShading = useStore((s) => s.setShading);
   const tabs: { id: Tab | 'later'; label: string }[] = [
     { id: 'sketch', label: 'Sketch' },
+    { id: 'draw', label: 'Draw' },
     { id: 'flats', label: 'Flats' },
     { id: 'pattern', label: 'Pattern' },
     { id: 'later', label: '3D, later' },

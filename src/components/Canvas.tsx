@@ -116,12 +116,13 @@ export function Canvas() {
   }, []);
 
   const world = (e: { clientX: number; clientY: number }) => clientToLocal(worldRef.current, e.clientX, e.clientY);
+  const onBody = tab === 'sketch' || tab === 'draw';
   const cq = getCroquis(doc.base.sex, doc.base.view);
-  const rig = tab === 'sketch' ? poseRig(doc.base.sex, doc.base.pose, cq.waistY, cq.hemY) : IDENTITY_RIG;
+  const rig = onBody ? poseRig(doc.base.sex, doc.base.pose, cq.waistY, cq.hemY) : IDENTITY_RIG;
   const body = bodyProfile(doc.base.sex, doc.base.pose);
   const sag = doc.base.view === 'front' ? 6 : 3;
   const fitOf = (g: Garment) => fitGarment(g, rig, body, sag);
-  const torso = torsoProfile(doc.base.sex, tab === 'sketch' ? doc.base.pose : 'stand');
+  const torso = torsoProfile(doc.base.sex, onBody ? doc.base.pose : 'stand');
   const garmentById = (id: string | null): Garment | undefined => doc.garments.find((g) => g.id === id);
   const r1 = (n: number) => Math.round(n * 10) / 10;
   /** Pointer to garment space, undoing the pose and the garment transform (tops: body space). */
@@ -394,7 +395,7 @@ export function Canvas() {
 
   const rendered = doc.settings.render === 'rendered';
   const sel = garmentById(selectedId);
-  const showHandles = !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
+  const showHandles = tab !== 'draw' && !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
   const handleR = 6 / view.k;
   const selFit = showHandles && sel && sel.type !== 'top' ? fitOf(sel) : null;
   // where each forearm can come forward: outside the torso, below the lowest sleeve on that side
@@ -438,7 +439,8 @@ export function Canvas() {
     >
       <g ref={worldRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
         <Artboard />
-        {tab === 'sketch' && (
+        <g opacity={tab === 'draw' ? (doc.drawing.showRef ? doc.drawing.refOpacity : 0) : 1}>
+        {onBody && (
           <g id="croquis-art">
             <CroquisView sex={doc.base.sex} view={doc.base.view} pose={doc.base.pose} rendered={rendered} skin={doc.base.skin} />
           </g>
@@ -470,7 +472,7 @@ export function Canvas() {
           return <GarmentView key={g.id} g={fit.g} {...common} />;
         })}
         {/* arms hang in front of the clothes: redraw the forearms and hands over the garments, below any sleeve */}
-        {tab === 'sketch' && doc.garments.some((g) => g.visible) && (
+        {onBody && doc.garments.some((g) => g.visible) && (
           <>
             <defs>
               <filter id="cast-blur" x="-20%" y="-50%" width="140%" height="200%">
@@ -558,6 +560,7 @@ export function Canvas() {
             })}
           </g>
         )}
+        </g>
       </g>
     </svg>
   );

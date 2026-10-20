@@ -1,6 +1,7 @@
 export type IconName =
   | 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'note' | 'hand'
-  | 'undo' | 'redo' | 'eye' | 'eyeoff' | 'up' | 'down' | 'trash' | 'plus' | 'minus' | 'fit';
+  | 'undo' | 'redo' | 'eye' | 'eyeoff' | 'up' | 'down' | 'trash' | 'plus' | 'minus' | 'fit'
+  | 'brush' | 'smudge' | 'eraser' | 'fill' | 'eyedrop' | 'copy' | 'lock' | 'download' | 'clear';
 
 const PATHS: Record<IconName, string> = {
   move: 'M4,3 L15,10 L10,11 L8,16 Z',
@@ -22,6 +23,15 @@ const PATHS: Record<IconName, string> = {
   plus: 'M4,10 H16 M10,4 V16',
   minus: 'M4,10 H16',
   fit: 'M3,7 V3 H7 M13,3 H17 V7 M17,13 V17 H13 M7,17 H3 V13',
+  brush: 'M16,3 L9,11 M9,11 Q5,11 5,15 Q5,17 3,17 Q9,18 10,13 Z M12,7 L14,9',
+  smudge: 'M8,17 V9 Q8,7 9.5,7 Q11,7 11,9 V8 Q11,6 12.5,6 Q14,6 14,8 V9 Q14,7.5 15.3,7.5 Q16.5,7.5 16.5,9 V13 Q16.5,17 12,17 Z M8,11 L6,9 Q4.5,8 4,9.5 L7,15',
+  eraser: 'M3,13 L10,6 L15,11 L10,16 H6 Z M6.5,9.5 L11.5,14.5 M3,17 H17',
+  fill: 'M4,10 L10,4 L16,10 L10,16 Z M4,10 H16 M17,13 Q18.5,15.5 17,16.5 Q15.5,15.5 17,13 Z',
+  eyedrop: 'M13,3 L17,7 L15,9 L11,5 Z M12,6 L5,13 L4,16 L7,15 L14,8',
+  copy: 'M7,7 H16 V16 H7 Z M4,13 V4 H13',
+  lock: 'M5,9 H15 V17 H5 Z M7,9 V6 Q7,3 10,3 Q13,3 13,6 V9',
+  download: 'M10,3 V13 M6,9 L10,13 L14,9 M4,17 H16',
+  clear: 'M4,4 H16 V16 H4 Z M7,7 L13,13 M13,7 L7,13',
 };
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
