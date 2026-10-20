@@ -67,14 +67,14 @@ export function selectedPaths() {
 let originals: Map<string, VItem> | null = null;
 
 /** Remember the selection before a drag so each move is applied to the original, not compounded. */
-export function beginTransform(ids: string[] = vs().vsel) {
+export function beginTransform(ids: string[] = vs().vsel, checkpoint = true) {
   const v = vdoc();
   originals = new Map();
   for (const id of orderedSelection(v, ids)) {
     const f = findItem(v, id);
     if (f && isEditable(f)) originals.set(id, structuredClone(f.item));
   }
-  vs().checkpoint();
+  if (checkpoint) vs().checkpoint();
 }
 
 export function applyTransform(m: Mat) {

@@ -265,7 +265,7 @@ export function handleVectorKey(e: KeyboardEvent): boolean {
   }
   const combo = comboOf(e);
   if (combo === 'escape') {
-    tool.cancel?.(toolCtx!);
+    if (toolCtx) tool.cancel?.(toolCtx);
     st.setVSel([]);
     st.setVNodes([]);
     return true;

@@ -65,17 +65,19 @@ function itemsInRect(r: Box): string[] {
 /** Duplicate the selection in place (Alt drag), selecting the copies. */
 function duplicateInPlace() {
   const st = vs();
-  const copies: string[] = [];
+  const v0 = vdoc();
+  const copies: { after: string; item: VItem }[] = [];
+  for (const id of st.vsel) {
+    const f = findItem(v0, id);
+    if (f && isEditable(f)) copies.push({ after: id, item: cloneItem(f.item) });
+  }
   st.vedit((v) => {
-    for (const id of [...st.vsel]) {
-      const f = findItem(v as VectorDoc, id);
-      if (!f || !isEditable(f)) continue;
-      const c = cloneItem(f.item as VItem);
-      (f.list as VItem[]).splice(f.index + 1, 0, c);
-      copies.push(c.id);
+    for (const c of copies) {
+      const f = findItem(v as VectorDoc, c.after);
+      if (f) (f.list as VItem[]).splice(f.index + 1, 0, c.item);
     }
   });
-  st.setVSel(copies);
+  st.setVSel(copies.map((c) => c.item.id));
 }
 
 const handlePos = (b: Box, hh: BoxHandle): Pt => ({
@@ -112,11 +114,11 @@ function moveBoxModes(e: PtrEvt, ctx: ToolCtx): boolean {
     if (!m.started) {
       if (Math.hypot(e.rx - m.start.x, e.ry - m.start.y) * ctx.k < MOVE_EPS) return true;
       m.started = true;
-      if (m.dup) {
-        vs().checkpoint();
-        duplicateInPlace();
-      }
       beginTransform();
+      if (m.dup) {
+        duplicateInPlace();
+        beginTransform(undefined, false);
+      }
     }
     applyTransform(translate(dx, dy));
     return true;
