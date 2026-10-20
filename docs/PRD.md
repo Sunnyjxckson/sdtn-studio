@@ -85,6 +85,25 @@ V1 is a web app with no backend: it runs in the browser on a laptop, phone or iP
 | Export | Native SVG; PDF with jsPDF + svg2pdf.js | Factory gets real vector files |
 | Hosting | Vercel | Free tier is enough; deploys from main |
 
+## Vector mode
+
+The Vector tab is an Illustrator style editor on top of the croquis, rebuilt in TypeScript from the feature set of [VectorCraft](https://github.com/storytold/vectorcraft) (open source, MIT or Apache). It shipped to main on Oct 20, 2026.
+
+| Area | What's in it | Keys |
+| --- | --- | --- |
+| Select | Selection, Direct Selection, marquee, scale and rotate box, Alt drag copy, snapping and smart guides | V, A |
+| Draw | Pen, Pencil, Smooth, Blob Brush, add, delete and convert anchors | P, N, Shift+B, =, -, Shift+C |
+| Shapes | Rectangle, Rounded Rectangle, Ellipse, Polygon, Star, Line | M, L, \ |
+| Type and measure | Type with fonts and spacing, Dimension in inches, Measure | T, Shift+D |
+| Transform | Rotate, Reflect, Scale, Shear, Scissors, Knife, Shape Builder, Eraser | R, O, S, C, Shift+M, Shift+E |
+| Paint | Fill and stroke, dashes incl. topstitch and coverstitch, gradients, blend modes, swatches with washes, Eyedropper, Gradient tool, Blend | I, G, W |
+| Pathfinder | Unite, Minus Front, Intersect, Exclude, Divide, Trim, Merge, Crop, Outline, Minus Back | panel |
+| Path ops | Join, Average, compound paths, clipping masks, offset path, outline stroke, simplify, smooth, reverse, add anchors | Ctrl+J, Ctrl+8, Ctrl+7 |
+| Objects | Layers with lock and hide, group, arrange, align and distribute, live Repeat (mirror on the center line, radial, grid) | Ctrl+G, Ctrl+] |
+| Files | Garments and croquis to vector, place or paste SVG, export SVG, PNG and PDF | Ctrl+Shift+E |
+
+Known gaps: rotated text edits unrotated, blend pairs compound paths by index, cropped jeans convert full length.
+
 ## Build milestones
 
 Build in this order; each milestone is usable on its own before the next starts.
