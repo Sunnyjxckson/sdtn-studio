@@ -11,6 +11,7 @@ export function TopBar() {
   const tabs: { id: Tab | 'later'; label: string }[] = [
     { id: 'sketch', label: 'Sketch' },
     { id: 'draw', label: 'Draw' },
+    { id: 'vector', label: 'Vector' },
     { id: 'flats', label: 'Flats' },
     { id: 'pattern', label: 'Pattern' },
     { id: 'later', label: '3D, later' },

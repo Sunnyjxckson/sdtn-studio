@@ -9,6 +9,8 @@ import { DrawOverlay } from './components/DrawOverlay';
 import { BrushPanel, DrawBar, DrawRightPanel, DrawToolStrip, SideSliders } from './components/DrawPanels';
 import { useAutosave, useShortcuts } from './hooks';
 import { useStore } from './store';
+import { VectorOverlay } from './components/vector/VectorOverlay';
+import { VectorBar, VectorLeftPanel, VectorRightPanel, VectorToolStrip } from './components/vector/VectorPanels';
 
 export default function App() {
   useAutosave();
@@ -16,25 +18,27 @@ export default function App() {
   const ready = useStore((s) => s.ready);
   const tab = useStore((s) => s.tab);
   const draw = tab === 'draw';
+  const vec = tab === 'vector';
   return (
     <div className="app">
       <TopBar />
-      <div className={draw ? 'main draw' : 'main'}>
-        {draw ? <BrushPanel /> : <LeftPanel />}
+      <div className={draw ? 'main draw' : vec ? 'main vec' : 'main'}>
+        {draw ? <BrushPanel /> : vec ? <VectorLeftPanel /> : <LeftPanel />}
         <div className="center">
           {tab === 'pattern' ? (
             <PatternView />
           ) : (
             <>
-              {draw ? <DrawToolStrip /> : <ToolStrip />}
+              {draw ? <DrawToolStrip /> : vec ? <VectorToolStrip /> : <ToolStrip />}
               <div className="stage">
-                {draw ? <DrawBar /> : <CanvasBar />}
+                {draw ? <DrawBar /> : vec ? <VectorBar /> : <CanvasBar />}
                 <div className="canvaswrap">
                   {ready ? (
                     <>
                       <Canvas />
                       {tab !== 'flats' && <DrawOverlay interactive={draw} />}
                       {draw && <SideSliders />}
+                      {vec && <VectorOverlay />}
                     </>
                   ) : (
                     <div className="loading mono muted">Loading</div>
@@ -44,7 +48,7 @@ export default function App() {
             </>
           )}
         </div>
-        {draw ? <DrawRightPanel /> : <RightPanel />}
+        {draw ? <DrawRightPanel /> : vec ? <VectorRightPanel /> : <RightPanel />}
       </div>
     </div>
   );

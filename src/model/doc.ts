@@ -3,6 +3,7 @@ import { DEFAULT_SKIN, type Sex, type SkinId, type View } from './croquis';
 import type { Note } from './note';
 import type { PoseId } from './figure';
 import { emptyDrawing, normalizeDrawing, type Drawing } from './draw';
+import { emptyVector, normalizeVector, type VectorDoc } from './vector';
 
 export type RenderMode = 'line' | 'rendered';
 
@@ -15,6 +16,8 @@ export interface Doc {
   notes: Note[];
   /** Draw mode layers, on top of the garments. */
   drawing: Drawing;
+  /** Vector mode artwork, over the garments. */
+  vector: VectorDoc;
 }
 
 export const emptyDoc = (): Doc => ({
@@ -24,6 +27,7 @@ export const emptyDoc = (): Doc => ({
   garments: [],
   notes: [],
   drawing: emptyDrawing(),
+  vector: emptyVector(),
 });
 
 /** Fill in fields that older saved documents do not have. */
@@ -37,5 +41,6 @@ export function normalizeDoc(d: Doc): Doc {
     garments: d.garments.map(normalizeGarment),
     notes: d.notes ?? [],
     drawing: normalizeDrawing(d.drawing),
+    vector: normalizeVector(d.vector),
   };
 }

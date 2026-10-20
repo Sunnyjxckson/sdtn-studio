@@ -12,6 +12,7 @@ import { TopView } from './TopView';
 import type { Pt } from '../model/garment';
 import { fitGarment } from '../model/conform';
 import { getCroquis } from '../model/croquis';
+import { VectorArt } from './vector/VectorArt';
 
 type Drag =
   | { type: 'pan'; sx: number; sy: number; vx: number; vy: number }
@@ -116,7 +117,7 @@ export function Canvas() {
   }, []);
 
   const world = (e: { clientX: number; clientY: number }) => clientToLocal(worldRef.current, e.clientX, e.clientY);
-  const onBody = tab === 'sketch' || tab === 'draw';
+  const onBody = tab === 'sketch' || tab === 'draw' || tab === 'vector';
   const cq = getCroquis(doc.base.sex, doc.base.view);
   const rig = onBody ? poseRig(doc.base.sex, doc.base.pose, cq.waistY, cq.hemY) : IDENTITY_RIG;
   const body = bodyProfile(doc.base.sex, doc.base.pose);
@@ -395,7 +396,7 @@ export function Canvas() {
 
   const rendered = doc.settings.render === 'rendered';
   const sel = garmentById(selectedId);
-  const showHandles = tab !== 'draw' && !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
+  const showHandles = tab !== 'draw' && tab !== 'vector' && !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
   const handleR = 6 / view.k;
   const selFit = showHandles && sel && sel.type !== 'top' ? fitOf(sel) : null;
   // where each forearm can come forward: outside the torso, below the lowest sleeve on that side
@@ -527,6 +528,7 @@ export function Canvas() {
             </g>
           );
         })}
+        {tab !== 'flats' && <VectorArt />}
         {showHandles && sel && (
           <g>
             {sel.points.map((p0, i) => {

@@ -28,10 +28,18 @@ import {
 import { placeOnCroquis } from './model/placement';
 import { buildTopPoints, type TopOpts } from './model/top';
 import { newId } from './model/garment';
+import { defaultStyle, type VectorDoc, type VStyle, findItem } from './model/vector';
 import { brushById, MAX_DRAW_LAYERS, newDrawLayer, type BrushId, type DrawLayer, type Drawing, type Stroke } from './model/draw';
 
 export type Tool = 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'note' | 'hand';
-export type Tab = 'sketch' | 'draw' | 'flats' | 'pattern';
+export type Tab = 'sketch' | 'draw' | 'vector' | 'flats' | 'pattern';
+
+/** A selected anchor in vector mode: path id, sub path, node index. */
+export interface NodeRef {
+  id: string;
+  s: number;
+  i: number;
+}
 export type DrawTool = 'brush' | 'smudge' | 'erase' | 'fill' | 'eyedrop' | 'hand';
 export type PaintTool = 'brush' | 'smudge' | 'erase';
 
@@ -111,6 +119,26 @@ interface State {
   drawTool: DrawTool;
   drawPrefs: DrawPrefs;
   activeLayer: string | null;
+
+  // vector mode
+  vtool: string;
+  /** Selected item ids. */
+  vsel: string[];
+  /** Selected anchors (Direct Selection). */
+  vnodes: NodeRef[];
+  /** Layer new vector items go into. */
+  vlayer: string | null;
+  /** Style new shapes get, and what the Appearance panel edits when nothing is selected. */
+  vstyle: VStyle;
+  setVTool: (t: string) => void;
+  setVSel: (ids: string[]) => void;
+  setVNodes: (n: NodeRef[]) => void;
+  setVLayer: (id: string | null) => void;
+  setVStyle: (fn: (s: Draft<VStyle>) => void) => void;
+  /** One undo step on the vector document. */
+  vstep: (fn: (v: Draft<VectorDoc>) => void, coalesce?: string) => void;
+  /** Edit without an undo step, for drags (checkpoint once when the drag starts). */
+  vedit: (fn: (v: Draft<VectorDoc>) => void) => void;
 
   // history
   checkpoint: (coalesce?: string) => void;
@@ -214,6 +242,38 @@ export const useStore = create<State>()(
       drawPrefs: loadPrefs(),
       activeLayer: null,
 
+      vtool: 'select',
+      vsel: [],
+      vnodes: [],
+      vlayer: null,
+      vstyle: defaultStyle(),
+      setVTool: (t) =>
+        set((s) => {
+          s.vtool = t;
+        }),
+      setVSel: (ids) =>
+        set((s) => {
+          s.vsel = ids;
+          s.vnodes = s.vnodes.filter((n) => ids.includes(n.id));
+        }),
+      setVNodes: (n) =>
+        set((s) => {
+          s.vnodes = n;
+        }),
+      setVLayer: (id) =>
+        set((s) => {
+          s.vlayer = id;
+        }),
+      setVStyle: (fn) =>
+        set((s) => {
+          fn(s.vstyle);
+        }),
+      vstep: (fn, coalesce) => step((d) => fn(d.vector), coalesce),
+      vedit: (fn) =>
+        set((s) => {
+          fn(s.doc.vector);
+        }),
+
       checkpoint: (coalesce) => {
         const s = get();
         if (coalesce && s.coalesceKey === coalesce) return;
@@ -234,6 +294,8 @@ export const useStore = create<State>()(
           s.selectedText = null;
           if (s.selectedNote && !prev.notes.some((n) => n.id === s.selectedNote)) s.selectedNote = null;
           if (s.selectedId && !prev.garments.some((g) => g.id === s.selectedId)) s.selectedId = null;
+          s.vsel = s.vsel.filter((id) => findItem(prev.vector, id));
+          s.vnodes = s.vnodes.filter((n) => s.vsel.includes(n.id));
         }),
       redo: () =>
         set((s) => {
@@ -245,6 +307,8 @@ export const useStore = create<State>()(
           s.selectedText = null;
           if (s.selectedNote && !next.notes.some((n) => n.id === s.selectedNote)) s.selectedNote = null;
           if (s.selectedId && !next.garments.some((g) => g.id === s.selectedId)) s.selectedId = null;
+          s.vsel = s.vsel.filter((id) => findItem(next.vector, id));
+          s.vnodes = s.vnodes.filter((n) => s.vsel.includes(n.id));
         }),
 
       hydrate: (doc, selectedId) =>

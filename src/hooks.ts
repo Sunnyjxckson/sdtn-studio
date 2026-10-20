@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { loadSaved, save } from './persist';
+import { handleVectorKey } from './vector/commands';
 import { toolBrush, useStore, type DrawTool, type Tool } from './store';
 
 /** Restore from IndexedDB once, then auto-save (debounced) on every document change. */
@@ -45,6 +46,10 @@ export function useShortcuts() {
       if (mod && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         st.redo();
+        return;
+      }
+      if (st.tab === 'vector') {
+        handleVectorKey(e);
         return;
       }
       if (mod || e.altKey) return;
