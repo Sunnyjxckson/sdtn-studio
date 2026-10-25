@@ -1,7 +1,8 @@
 // SVG import (file, clipboard) and garment/croquis to vector conversion, through paper.js.
 import type paper from 'paper/dist/paper-core';
 import { useStore } from '../../store';
-import { newId, WASHES } from '../../model/garment';
+import { newId } from '../../model/garment';
+import { garmentHex } from '../../model/production';
 import { skinColor } from '../../model/croquis';
 import {
   defaultStyle,
@@ -272,7 +273,7 @@ export function garmentsToVector(): number {
     seen.add(el);
     const gid = el.getAttribute('data-gid');
     const g = doc.garments.find((x) => x.id === gid);
-    const v = groupToVector(el, w, g?.name || 'Garment', g ? WASHES[g.wash] : '#F4F2ED');
+    const v = groupToVector(el, w, g?.name || 'Garment', g ? garmentHex(g) : '#F4F2ED');
     if (v) groups.push(v);
   }
   if (!groups.length) return 0;

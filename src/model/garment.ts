@@ -2,24 +2,28 @@
 // Ported from the Edit mockup: build(), outline paths, details, live spec.
 
 import { BLOCK_LOOK, buildTopPoints, topName, type TopOpts } from './top';
+import type { ShoeOpts } from './shoes';
 import { rng } from './rng';
+import type { AllOver, Construction, FabricInfo, Graphic, Trim } from './production';
 
 export const GARMENT_W = 300;
 export const GARMENT_H = 516;
 
-export type GarmentType = 'jeans' | 'top' | 'shorts' | 'skirt';
+export type GarmentType = 'jeans' | 'top' | 'shorts' | 'skirt' | 'shoes';
 export type Fit = 'Skinny' | 'Slim' | 'Straight' | 'Flare' | 'Baggy' | 'Wide';
 export type Rise = 'Low' | 'Mid' | 'High';
 export type WaistKind = 'Regular' | 'Belt loops' | 'Drawcord' | 'Knee strap' | 'Wide band';
-export type HemKind = 'Clean' | 'Cuffed' | 'Raw';
+export type HemKind = 'Clean' | 'Cuffed' | 'Raw' | 'Rib';
 export type ShortsLength = 'Micro' | 'Short' | 'Mid-thigh' | 'Knee' | 'Jorts';
 export type SkirtShape = 'Pencil' | 'A-line' | 'Pleated' | 'Wrap';
 export type SkirtLength = 'Mini' | 'Knee' | 'Midi' | 'Maxi';
 export type PocketKind = 'Scoop' | 'Coin' | 'Cargo' | 'None';
 export type WashName = 'Raw indigo' | 'Washed black' | 'Black' | 'Crimson' | 'Grey' | 'Bleached' | 'Ecru' | 'White' | 'Heather' | 'Navy' | 'Olive' | 'Cream';
-export type FabricKind = 'Denim' | 'Plaid' | 'Houndstooth' | 'Pinstripe' | 'Polka dot' | 'Leather' | 'Satin' | 'Knit' | 'Jersey' | 'Rib';
+export type FabricKind = 'Denim' | 'Plaid' | 'Houndstooth' | 'Pinstripe' | 'Polka dot' | 'Leather' | 'Satin' | 'Knit' | 'Jersey' | 'Rib' | 'Poplin' | 'Nylon' | 'Twill';
 export const FABRIC_NAMES: FabricKind[] = ['Denim', 'Plaid', 'Houndstooth', 'Pinstripe', 'Polka dot', 'Leather', 'Satin', 'Knit'];
-export const TOP_FABRICS: FabricKind[] = ['Jersey', 'Rib', 'Knit', 'Satin', 'Leather', 'Plaid', 'Pinstripe', 'Polka dot', 'Denim'];
+export const TOP_FABRICS: FabricKind[] = ['Jersey', 'Rib', 'Knit', 'Poplin', 'Twill', 'Nylon', 'Satin', 'Leather', 'Plaid', 'Pinstripe', 'Polka dot', 'Denim'];
+export const PANTS_FABRICS: FabricKind[] = ['Denim', 'Twill', 'Jersey', 'Nylon', 'Leather', 'Pinstripe', 'Plaid', 'Houndstooth', 'Satin', 'Knit'];
+export const SHOE_FABRICS: FabricKind[] = ['Leather', 'Satin', 'Knit', 'Denim', 'Nylon', 'Jersey', 'Plaid', 'Polka dot'];
 
 /** Pixels per inch in garment space: vertical measures, and leg widths. */
 export const PX_IN_V = 9.4;
@@ -79,7 +83,35 @@ export interface Garment {
   shorts?: ShortsOpts;
   /** Skirts only. */
   skirt?: SkirtOpts;
+  /** Style key this garment was copied from, so a copy in another look is the same style on the line sheet. */
+  src?: string;
+  /** Custom color (from a palette or colorway). Overrides the wash. */
+  colorHex?: string;
+  colorName?: string;
+  /** Pantone TCX code for the custom color, free text. */
+  pantone?: string;
+  graphics?: Graphic[];
+  allOver?: AllOver;
+  trims?: Trim[];
+  construction?: Construction;
+  fabricInfo?: FabricInfo;
+  /** Cost per unit the user typed into the bill of materials, by row key. */
+  bomCost?: Record<string, number>;
+  /** Cargo, jogger, trouser and legging blocks (type jeans, block named after them). */
+  pants?: PantsOpts;
+  /** Shoes only. */
+  shoes?: ShoeOpts;
 }
+
+export type PantsBlock = 'Cargo' | 'Jogger' | 'Trouser' | 'Legging';
+export interface PantsOpts {
+  block: PantsBlock;
+  /** Trousers: pleats at the front. */
+  pleats?: boolean;
+}
+export const PANTS_BLOCKS: PantsBlock[] = ['Cargo', 'Jogger', 'Trouser', 'Legging'];
+export const PANTS_FIT_NAMES: Fit[] = ['Slim', 'Straight', 'Baggy', 'Wide'];
+export const isPants = (g: Pick<Garment, 'type' | 'pants'>) => g.type === 'jeans' && !!g.pants;
 
 export interface ShortsOpts {
   length: ShortsLength;
@@ -221,6 +253,229 @@ export function buildSkirtPoints(o: SkirtOpts): Pt[] {
     { key: 'sideL', x: 150 - sideHalf, y: mid - wrapDrop / 2 },
     { key: 'hipL', x: 72, y: hipY },
   ];
+}
+
+
+// ---------- pants: cargo, jogger, trouser, legging ----------
+
+/** [knee width, opening width, hip half width] per block, before the fit scales them. */
+const PANTS_W: Record<PantsBlock, [number, number, number]> = {
+  Cargo: [50, 44, 78],
+  Jogger: [46, 28, 80],
+  Trouser: [42, 38, 78],
+  Legging: [25, 19, 74],
+};
+const PANTS_FIT_SCALE: Record<Fit, number> = { Skinny: 0.86, Slim: 0.92, Straight: 1, Flare: 1.05, Baggy: 1.2, Wide: 1.34 };
+
+/** The 13 keyed outline points of a pants block: same keys as jeans, so posing and flats just work. */
+export function buildPantsPoints(p: PantsOpts, fit: Fit, rise: Rise, hem: HemKind | undefined): Pt[] {
+  const [k0, h0, hip] = PANTS_W[p.block];
+  const sc = p.block === 'Legging' ? 1 : PANTS_FIT_SCALE[fit];
+  const pleat = p.block === 'Trouser' && p.pleats;
+  const k = (k0 + (pleat ? 6 : 0)) * sc;
+  let h = (h0 - (pleat ? 4 : 0)) * sc;
+  if (p.block === 'Cargo' && hem === 'Cuffed') h = 30 * Math.max(0.9, sc);
+  if (p.block === 'Trouser' && hem === 'Cuffed') h = Math.max(30, h - 4);
+  const w = RISES[rise] + 14;
+  const Y = 486, kn = 330, lc = 110, rc = 190, hl = 104, hr = 196;
+  const hx = hip + (pleat ? 5 : 0) + (p.block === 'Jogger' || p.block === 'Cargo' ? (sc - 1) * 10 : 0);
+  const wx = p.block === 'Legging' ? 84 : 80;
+  return [
+    { key: 'waistL', x: wx, y: w },
+    { key: 'waistR', x: 300 - wx, y: w },
+    { key: 'hipR', x: 150 + hx, y: 170 },
+    { key: 'kneeRo', x: rc + k / 2, y: kn },
+    { key: 'hemRo', x: hr + h / 2, y: Y },
+    { key: 'hemRi', x: hr - h / 2, y: Y },
+    { key: 'kneeRi', x: rc - k / 2, y: kn },
+    { key: 'crotch', x: 150, y: 184 },
+    { key: 'kneeLi', x: lc + k / 2, y: kn },
+    { key: 'hemLi', x: hl + h / 2, y: Y },
+    { key: 'hemLo', x: hl - h / 2, y: Y },
+    { key: 'kneeLo', x: lc - k / 2, y: kn },
+    { key: 'hipL', x: 150 - hx, y: 170 },
+  ];
+}
+
+export const pantsName = (o: PantsOpts) => (o.block === 'Cargo' ? 'Cargo pants' : o.block === 'Jogger' ? 'Joggers' : o.block === 'Trouser' ? (o.pleats ? 'Pleated trousers' : 'Trousers') : 'Leggings');
+
+export const PANTS_LOOK: Record<PantsBlock, { fabric: FabricKind; wash: WashName; fit: Fit; parts: Garment['parts'] }> = {
+  Cargo: { fabric: 'Twill', wash: 'Olive', fit: 'Baggy', parts: { waist: 'Belt loops', pocket: 'Scoop', hem: 'Clean' } },
+  Jogger: { fabric: 'Jersey', wash: 'Heather', fit: 'Straight', parts: { waist: 'Drawcord', pocket: 'None', hem: 'Rib' } },
+  Trouser: { fabric: 'Twill', wash: 'Washed black', fit: 'Straight', parts: { waist: 'Belt loops', pocket: 'Scoop', hem: 'Clean' } },
+  Legging: { fabric: 'Jersey', wash: 'Black', fit: 'Skinny', parts: { waist: 'Regular', pocket: 'None', hem: 'Clean' } },
+};
+
+export function createPants(o: PantsOpts): Garment {
+  const look = PANTS_LOOK[o.block];
+  return {
+    id: newId(),
+    name: pantsName(o),
+    type: 'jeans',
+    block: o.block.toLowerCase(),
+    fit: look.fit,
+    rise: 'Mid',
+    points: buildPantsPoints(o, look.fit, 'Mid', look.parts.hem),
+    parts: { ...look.parts },
+    wash: look.wash,
+    fabric: look.fabric,
+    fabricScale: 1,
+    holes: [],
+    distress: [],
+    texts: [],
+    cropY: null,
+    transform: { x: 0, y: 0, scale: 1 },
+    visible: true,
+    pants: o,
+  };
+}
+
+/** x of the leg centre line at height y (garment space). */
+function legCentre(points: Pt[], side: 'L' | 'R', y: number): number | null {
+  const outer = sideX(points, side === 'L' ? ['hipL', 'kneeLo', 'hemLo'] : ['hipR', 'kneeRo', 'hemRo'], y);
+  const inner = sideX(points, side === 'L' ? ['crotch', 'kneeLi', 'hemLi'] : ['hemRi', 'kneeRi', 'crotch'], y);
+  return outer != null && inner != null ? (outer + inner) / 2 : null;
+}
+
+function pantsPaths(g: Pick<Garment, 'points' | 'parts'> & { pants: PantsOpts }, sag: number, inset: [number, number]): GarmentPaths {
+  const pts = g.points;
+  const block = g.pants.block;
+  const body = 'M' + pts.map((p) => f(p.x, p.y)).join(' L') + ' Z';
+  const wl = findPoint(pts, 'waistL');
+  const wr = findPoint(pts, 'waistR');
+  const top = wl.y;
+  const mx = (wl.x + wr.x) / 2;
+  const my = (wl.y + wr.y) / 2;
+  const tl = wl.x + inset[0], tr = wr.x - inset[1];
+  const band =
+    'M' + f(tl, wl.y - 14) + ' Q' + f(mx, my - 14 + sag * 2) + ' ' + f(tr, wr.y - 14) +
+    ' L' + f(wr.x, wr.y) + ' Q' + f(mx, my + sag * 2) + ' ' + f(wl.x, wl.y) + ' Z';
+  let stitch =
+    'M' + f(tl + 1.5, wl.y - 11) + ' Q' + f(mx, my - 11 + sag * 2) + ' ' + f(tr - 1.5, wr.y - 11) +
+    ' M' + f(wl.x + 1, wl.y - 3) + ' Q' + f(mx, my - 3 + sag * 2) + ' ' + f(wr.x - 1, wr.y - 3);
+  if (block === 'Jogger' || block === 'Legging') stitch += ' M' + f(tl + 1.5, wl.y - 7) + ' Q' + f(mx, my - 7 + sag * 2) + ' ' + f(tr - 1.5, wr.y - 7);
+  const ct = top + sag;
+  const hemY = Math.max(findPoint(pts, 'hemLo').y, findPoint(pts, 'hemLi').y);
+  const LK = ['hipL', 'kneeLo', 'hemLo'], RK = ['hipR', 'kneeRo', 'hemRo'];
+  const edge = (side: 'L' | 'R', y: number, dflt: number) => sideX(pts, side === 'L' ? LK : RK, y) ?? dflt;
+  // a leg that is hidden behind the other one in a pose has no outline here: leave its details out
+  const hasLeg = (side: 'L' | 'R') => [30, 70, 110].every((d) => sideX(pts, side === 'L' ? ['hipL', 'kneeLo', 'hemLo'] : ['hipR', 'kneeRo', 'hemRo'], findPoint(pts, 'crotch').y + d) != null);
+  let details = '';
+  let solid = '';
+  let crease = '';
+  const rivets: { x: number; y: number }[] = [];
+  let button: V2 | null = null;
+
+  // slanted side pocket, mouth running from the waistband down to the side seam
+  const slant = (side: 'L' | 'R', fromX: number, depth: number) => {
+    if (!hasLeg(side)) return;
+    const s = side === 'L' ? 1 : -1;
+    const x0 = (side === 'L' ? wl.x : wr.x) + s * fromX;
+    const yb = top + depth;
+    const xe = edge(side, yb, side === 'L' ? 76 : 224) + s * 1;
+    const c = { x: x0 - s * 4, y: top + depth * 0.62 };
+    solid += ` M${f(x0, top)} Q${f(c.x, c.y)} ${f(xe, yb)}`;
+    const c2 = { x: c.x + s * 2.6, y: c.y }, x1 = x0 + s * 2.6, xe2 = xe + s * 2.6;
+    details += ` M${f(x1, top + 2)} Q${f(c2.x, c2.y)} ${f(xe2, yb - 1)}`;
+  };
+  const loops = (ts: number[]) => {
+    ts.forEach((t) => {
+      const x = wl.x + (wr.x - wl.x) * t;
+      const dip = sag * 4 * t * (1 - t);
+      solid += ' M' + f(x, top - 16 + dip) + ' V' + (top + 2 + dip);
+    });
+  };
+  const jFly = () => {
+    details += ' M' + f(150, ct) + ' V' + (ct + 52) + ' M' + f(160, ct) + ' V' + (ct + 42) + ' Q' + f(160, ct + 54) + ' ' + f(150, ct + 56);
+  };
+  const scoop = (side: 'L' | 'R') => {
+    const s = side === 'L' ? 1 : -1;
+    const x0 = (side === 'L' ? wl.x : wr.x) + s * 8;
+    solid += ` M${f(x0, top)} Q${f(x0 + s * 8, top + 38)} ${f(x0 + s * 34, top + 40)}`;
+  };
+
+  if (block === 'Trouser') {
+    slant('L', 30, 58);
+    slant('R', 30, 58);
+    solid += ' M' + f(150, ct) + ' V' + (ct + 56);
+    button = { x: mx + 6, y: my - 7 + sag };
+    if (g.pants.pleats) {
+      for (const side of ['L', 'R'] as const) {
+        const s = side === 'L' ? 1 : -1;
+        const x = (side === 'L' ? wl.x : wr.x) + s * 50;
+        solid += ` M${f(x, top)} Q${f(x - s * 4, top + 24)} ${f(x - s * 2, top + 52)}`;
+        solid += ` M${f(x + s * 7, top)} Q${f(x + s * 4, top + 14)} ${f(x + s * 5, top + 30)}`;
+      }
+    }
+    // pressed creases down the centre of each leg
+    const y0 = top + (g.pants.pleats ? 56 : 44);
+    for (const side of ['L', 'R'] as const) {
+      let d = '';
+      for (let y = y0; y <= hemY - 4; y += 14) {
+        const x = legCentre(pts, side, Math.min(y, hemY - 4));
+        if (x != null) d += `${d ? ' L' : 'M'}${f(x, Math.min(y, hemY - 4))}`;
+      }
+      crease += (crease ? ' ' : '') + d;
+    }
+    if (g.parts.waist === 'Belt loops') loops([0.08, 0.28, 0.72, 0.92]);
+  } else if (block === 'Cargo') {
+    scoop('L');
+    scoop('R');
+    jFly();
+    button = { x: mx + 6, y: my - 7 + sag };
+    rivets.push({ x: wl.x + 9, y: top + 4 + sag * 0.3 }, { x: wr.x - 9, y: top + 4 + sag * 0.3 });
+    // thigh cargo pockets with flap and bellows, sitting on the leg outline
+    const yt = findPoint(pts, 'crotch').y + 14, yb = yt + 76;
+    const w = 31;
+    for (const side of ['L', 'R'] as const) {
+      if (!hasLeg(side)) continue;
+      const s = side === 'L' ? 1 : -1;
+      const dflt = side === 'L' ? 76 : 224;
+      const et = edge(side, yt, dflt) + s * 2, eb = edge(side, yb, dflt) + s * 2;
+      const ex = (y: number) => et + ((eb - et) * (y - yt)) / (yb - yt);
+      const P = (y: number, d: number) => f(ex(y) + s * d, y);
+      solid += ` M${P(yt, 0)} L${P(yt, w)} L${P(yb, w)} L${P(yb, 0)} Z`;
+      const yf = yt + 20;
+      solid += ` M${P(yf, 0)} L${P(yf, w)}`;
+      solid += ` M${P(yf, 0)} L${f(ex(yf) + s * w * 0.5, yf + 6)} L${P(yf, w)}`;
+      details += ` M${f(ex(yf + 3) + s * w * 0.5, yf + 8)} L${f(ex(yb - 2) + s * w * 0.5, yb - 2)}`;
+      details += ` M${P(yt + 2.6, 2.6)} L${P(yt + 2.6, w - 2.6)} L${P(yb - 2.6, w - 2.6)} L${P(yb - 2.6, 2.6)} Z`;
+      rivets.push({ x: ex(yt + 11) + s * w * 0.5, y: yt + 11 });
+    }
+    // darted knees
+    const kneeY = findPoint(pts, 'kneeLo').y;
+    for (const side of ['L', 'R'] as const) {
+      if (!hasLeg(side)) continue;
+      const xo = edge(side, kneeY - 18, side === 'L' ? 80 : 220);
+      const xi = sideX(pts, side === 'L' ? ['crotch', 'kneeLi', 'hemLi'] : ['hemRi', 'kneeRi', 'crotch'], kneeY - 18) ?? 150;
+      details += ` M${f(xo + (side === 'L' ? 1.5 : -1.5), kneeY - 18)} Q${f((xo + xi) / 2, kneeY - 8)} ${f(xi + (side === 'L' ? -1.5 : 1.5), kneeY - 18)}`;
+    }
+    if (g.parts.waist === 'Belt loops') loops([0.08, 0.28, 0.72, 0.92]);
+  } else if (block === 'Jogger') {
+    slant('L', 18, 56);
+    slant('R', 18, 56);
+    rivets.push({ x: mx - 9, y: my - 6 + sag }, { x: mx + 9, y: my - 6 + sag });
+    solid +=
+      ' M' + f(mx - 9, ct - 4) + ' Q' + f(mx - 15, ct + 26) + ' ' + f(mx - 10, ct + 48) +
+      ' M' + f(mx + 9, ct - 4) + ' Q' + f(mx + 15, ct + 26) + ' ' + f(mx + 10, ct + 48);
+    details += ' M' + f(150, ct + 12) + ' V' + (ct + 56);
+    // gathered ankle: a seam above the rib cuff on each leg
+  } else {
+    // legging: flatlock seams run down the outer legs and the centre front
+    for (const side of ['L', 'R'] as const) {
+      if (!hasLeg(side)) continue;
+      const s = side === 'L' ? 1 : -1;
+      let d = '';
+      for (let y = top + 24; y <= hemY - 20; y += 16) {
+        const e = edge(side, y, side === 'L' ? 76 : 224);
+        d += `${d ? ' L' : 'M'}${f(e + s * 5, y)}`;
+      }
+      details += ' ' + d;
+    }
+    details += ' M' + f(150, ct + 4) + ' V' + (findPoint(pts, 'crotch').y - 14);
+  }
+  const strap = '';
+  return { body, band, details, solid, strap, stitch, rivets, button, crease };
 }
 
 let counter = 0;
@@ -367,6 +622,8 @@ export interface GarmentPaths {
   stitch: string;
   rivets: { x: number; y: number }[];
   button: { x: number; y: number } | null;
+  /** Pressed crease lines (trousers), drawn light with a dark edge. */
+  crease?: string;
 }
 
 type V2 = { x: number; y: number };
@@ -488,8 +745,9 @@ function skirtPaths(g: Pick<Garment, 'points' | 'parts' | 'skirt'>, sag: number,
 }
 
 /** sag: how far the waist edge dips at the centre (garment units), so the band wraps the body. */
-export function garmentPaths(g: Pick<Garment, 'points' | 'parts'> & Partial<Pick<Garment, 'type' | 'skirt'>>, sag = 0, inset: [number, number] = [0, 0]): GarmentPaths {
+export function garmentPaths(g: Pick<Garment, 'points' | 'parts'> & Partial<Pick<Garment, 'type' | 'skirt' | 'pants'>>, sag = 0, inset: [number, number] = [0, 0]): GarmentPaths {
   if (g.type === 'skirt') return skirtPaths(g, sag, inset);
+  if (g.pants) return pantsPaths(g as Pick<Garment, 'points' | 'parts'> & { pants: PantsOpts }, sag, inset);
   const pts = g.points;
   const body = 'M' + pts.map((p) => f(p.x, p.y)).join(' L') + ' Z';
   const wl = findPoint(pts, 'waistL');
@@ -577,11 +835,13 @@ export interface HemPaths {
   /** Raw hem: loose threads past the edge, and worn weft lines just above it. */
   fray: string;
   wear: string;
+  /** Rib lines across a ribbed cuff. */
+  rib: string;
 }
 
 /** Hem treatment for shorts, from the (possibly posed) outline. Empty strings when there is nothing to draw. */
 export function hemPaths(g: Pick<Garment, 'id' | 'points' | 'parts'>): HemPaths {
-  const out: HemPaths = { cuff: '', cuffLine: '', cuffStitch: '', fray: '', wear: '' };
+  const out: HemPaths = { cuff: '', cuffLine: '', cuffStitch: '', fray: '', wear: '', rib: '' };
   const kind = g.parts.hem ?? 'Clean';
   if (kind === 'Clean') return out;
   const r = rng(g.id + ':hem');
@@ -617,8 +877,14 @@ export function hemPaths(g: Pick<Garment, 'id' | 'points' | 'parts'>): HemPaths 
         };
       });
     };
-    if (kind === 'Cuffed') {
+    if (kind === 'Cuffed' || kind === 'Rib') {
       const top = shifted(CUFF);
+      if (kind === 'Rib') {
+        for (let k = 1; k < 12; k++) {
+          const a = along(top, k / 12), b = along(chain, k / 12);
+          out.rib += `M${fmt(a)} L${fmt(b)} `;
+        }
+      }
       out.cuff += 'M' + chain.map(fmt).join(' L') + ' L' + top.slice().reverse().map(fmt).join(' L') + ' Z ';
       out.cuffLine += 'M' + top.map(fmt).join(' L') + ' ';
       out.cuffStitch += 'M' + shifted(3).map(fmt).join(' L') + ' ';
@@ -675,6 +941,14 @@ export function holeThreads(h: Hole): string {
 
 export function isDarkWash(w: WashName): boolean {
   return !['Grey', 'Bleached', 'Ecru', 'White', 'Heather', 'Cream'].includes(w);
+}
+
+/** Dark or light for the garment's actual color, custom colors included. */
+export function isDarkGarment(g: Pick<Garment, 'wash' | 'colorHex'>): boolean {
+  if (!g.colorHex) return isDarkWash(g.wash);
+  const h = g.colorHex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16), gg = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return 0.299 * r + 0.587 * gg + 0.114 * b < 150;
 }
 
 /** Index to insert at, plus the nearest point on the outline, for the Add point tool. */

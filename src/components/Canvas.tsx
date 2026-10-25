@@ -10,16 +10,19 @@ import { notePaths } from '../model/note';
 import { bodyProfile, IDENTITY_RIG, poseRig, poseUnwarp, torsoProfile, type Vec } from '../model/figure';
 import { garmentShape, stiffOf, topForward, topInverse } from '../model/top';
 import { TopView } from './TopView';
+import { ShoeView } from './ShoeView';
 import type { Pt } from '../model/garment';
 import { fitGarment } from '../model/conform';
 import { getCroquis } from '../model/croquis';
 import { VectorArt } from './vector/VectorArt';
+import { armFrontPaths } from './LookArt';
 
 type Drag =
   | { type: 'pan'; sx: number; sy: number; vx: number; vy: number }
   | { type: 'pt'; gid: string; i: number; started: boolean }
   | { type: 'garment'; gid: string; last: { x: number; y: number }; started: boolean }
   | { type: 'text'; gid: string; i: number; started: boolean }
+  | { type: 'graphic'; gid: string; id: string; dx: number; dy: number; started: boolean }
   | { type: 'note'; id: string; last: { x: number; y: number }; started: boolean }
   | { type: 'tip'; id: string; started: boolean }
   | { type: 'cut'; gid: string }
@@ -53,6 +56,7 @@ export function Canvas() {
   const selectedId = useStore((s) => s.selectedId);
   const selectedText = useStore((s) => s.selectedText);
   const selectedNote = useStore((s) => s.selectedNote);
+  const selectedGraphic = useStore((s) => s.selectedGraphic);
   const ready = useStore((s) => s.ready);
 
   // size tracking and first fit
@@ -157,6 +161,15 @@ export function Canvas() {
   };
   /** Posed garments are drawn through <use>, so work out what was hit from the data. */
   const posedHit = (g: Garment, at: { x: number; y: number }): { kind: string; idx: number } => {
+    const gl = g.type === 'shoes' ? [] : g.graphics ?? [];
+    for (let i = gl.length - 1; i >= 0; i--) {
+      const gr = gl[i];
+      if (gr.side !== doc.base.view) continue;
+      const a = (-gr.rot * Math.PI) / 180;
+      const dx = at.x - gr.x, dy = at.y - gr.y;
+      const rx = dx * Math.cos(a) - dy * Math.sin(a), ry = dx * Math.sin(a) + dy * Math.cos(a);
+      if (Math.abs(rx) < gr.w / 2 && Math.abs(ry) < (gr.w * gr.aspect) / 2) return { kind: 'graphic', idx: i };
+    }
     for (let i = g.texts.length - 1; i >= 0; i--) {
       const x = g.texts[i];
       if (Math.abs(at.x - x.x) < x.size * 0.36 * Math.max(1, x.t.length) && Math.abs(at.y - (x.y - x.size * 0.35)) < x.size * 0.7) return { kind: 'text', idx: i };
@@ -236,11 +249,21 @@ export function Canvas() {
     if (t === 'move') {
       if (kind === 'pt' && gid) {
         drag.current = { type: 'pt', gid, i: idx, started: false };
+      } else if (kind === 'graphic' && gid) {
+        const gr = garmentById(gid)?.graphics?.[idx];
+        if (gr) {
+          const at = local(gid, e);
+          st.selectGraphic(gr.id);
+          st.selectText(null);
+          drag.current = { type: 'graphic', gid, id: gr.id, dx: gr.x - at.x, dy: gr.y - at.y, started: false };
+        }
       } else if (kind === 'text' && gid) {
         st.selectText(idx);
+        st.selectGraphic(null);
         drag.current = { type: 'text', gid, i: idx, started: false };
       } else if (kind === 'garment' && gid) {
         st.selectText(null);
+        st.selectGraphic(null);
         drag.current = { type: 'garment', gid, last: world(e), started: false };
       } else {
         st.select(null);
@@ -250,13 +273,17 @@ export function Canvas() {
     }
 
     const sel = garmentById(st.selectedId);
-    if (!sel) return;
+    if (!sel || sel.type === 'shoes') return; // shoes have no outline to edit
 
     if (t === 'erase') {
       if (kind === 'pt') st.removePoint(sel.id, idx);
       else if (kind === 'hole') st.removeItem(sel.id, 'holes', idx);
       else if (kind === 'dist') st.removeItem(sel.id, 'distress', idx);
       else if (kind === 'text') st.removeItem(sel.id, 'texts', idx);
+      else if (kind === 'graphic') {
+        const gr = sel.graphics?.[idx];
+        if (gr) st.removeGraphic(sel.id, gr.id);
+      }
       return;
     }
 
@@ -340,6 +367,19 @@ export function Canvas() {
           p.y = at.y;
         }
       });
+    } else if (d.type === 'graphic') {
+      const at = local(d.gid, e);
+      if (!d.started) {
+        st.checkpoint();
+        d.started = true;
+      }
+      st.edit(d.gid, (g) => {
+        const x = g.graphics?.find((q) => q.id === d.id);
+        if (x) {
+          x.x = Math.round((at.x + d.dx) * 10) / 10;
+          x.y = Math.round((at.y + d.dy) * 10) / 10;
+        }
+      });
     } else if (d.type === 'text') {
       const at = local(d.gid, e);
       if (!d.started) {
@@ -354,7 +394,7 @@ export function Canvas() {
         }
       });
     } else if (d.type === 'garment') {
-      if (garmentById(d.gid)?.type === 'top') return; // tops ride the body
+      if (garmentById(d.gid)?.type === 'top' || garmentById(d.gid)?.type === 'shoes') return; // tops and shoes ride the body
       const w = world(e);
       const dx = w.x - d.last.x, dy = w.y - d.last.y;
       if (!d.started) {
@@ -413,32 +453,18 @@ export function Canvas() {
 
   const rendered = doc.settings.render === 'rendered';
   const sel = garmentById(selectedId);
-  const showHandles = tab !== 'draw' && tab !== 'vector' && !!sel && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
+  const showHandles = tab !== 'draw' && tab !== 'vector' && !!sel && sel.type !== 'shoes' && sel.visible && (tool === 'move' || tool === 'add' || tool === 'erase');
   const handleR = 6 / view.k;
-  const selFit = showHandles && sel && sel.type !== 'top' ? fitOf(sel) : null;
+  const selFit = showHandles && sel && sel.type !== 'top' && sel.type !== 'shoes' ? fitOf(sel) : null;
   // where each forearm can come forward: outside the torso, below the lowest sleeve on that side
-  const armFront = ([0, 1] as const).map((s) => {
-    let yLim = torso.armpit[s].y + 4;
-    for (const g of doc.garments) {
-      if (!g.visible || g.type !== 'top') continue;
-      const K = s === 0 ? 'L' : 'R';
-      const ends = g.points.filter((p) => p.key === `slO${K}` || p.key === `slI${K}` || p.key === `arm${K}`);
-      for (const p of ends) yLim = Math.max(yLim, topForward(torso, p, stiffOf(g.top)).y + 3);
-    }
-    const side = torso.sides[s];
-    const sx = (y: number) => {
-      if (y <= side[0].y) return side[0].x;
-      for (let i = 0; i < side.length - 1; i++) if (y <= side[i + 1].y) return side[i].x + ((y - side[i].y) / (side[i + 1].y - side[i].y || 1)) * (side[i + 1].x - side[i].x);
-      return side[side.length - 1].x;
-    };
-    const pts: string[] = [];
-    for (let y = yLim; y <= 1000; y += 6) pts.push(`${(sx(y) + (s === 0 ? -1 : 1)).toFixed(1)},${y.toFixed(1)}`);
-    const edge = s === 0 ? 0 : 600;
-    return `M${edge},${yLim} L${pts.join(' L')} L${edge},1000 Z`;
-  });
+  const armFront = armFrontPaths(torso, doc.garments);
   const selTop = showHandles && sel && sel.type === 'top' ? garmentShape(torso, sel, doc.base.view) : null;
   // tucked tops go under everything else
-  const ordered = [...doc.garments.filter((g) => g.type === 'top' && g.top?.tuck), ...doc.garments.filter((g) => !(g.type === 'top' && g.top?.tuck))];
+  const ordered = [
+    ...doc.garments.filter((g) => g.type === 'shoes'),
+    ...doc.garments.filter((g) => g.type === 'top' && g.top?.tuck),
+    ...doc.garments.filter((g) => g.type !== 'shoes' && !(g.type === 'top' && g.top?.tuck)),
+  ];
 
   const cursor =
     panning ? 'grabbing' : space || tool === 'hand' ? 'grab' : tool === 'move' ? 'default' : 'crosshair';
@@ -465,9 +491,12 @@ export function Canvas() {
         )}
         {ordered.map((g) => {
           if (!g.visible) return null;
+          if (g.type === 'shoes') {
+            return <ShoeView key={g.id} g={g} sex={doc.base.sex} view={doc.base.view} pose={onBody ? doc.base.pose : 'stand'} rendered={rendered} shading={doc.settings.shading} selectedGraphic={g.id === selectedId ? selectedGraphic : null} />;
+          }
           if (g.type === 'top') {
             return (
-              <TopView key={g.id} g={g} t={torso} rendered={rendered} shading={doc.settings.shading} selectedText={g.id === selectedId ? selectedText : null} bust={doc.base.sex === 'female'} view={doc.base.view} />
+              <TopView key={g.id} g={g} t={torso} rendered={rendered} shading={doc.settings.shading} selectedText={g.id === selectedId ? selectedText : null} bust={doc.base.sex === 'female'} view={doc.base.view} selectedGraphic={g.id === selectedId ? selectedGraphic : null} />
             );
           }
           const fit = fitOf(g);
@@ -478,6 +507,8 @@ export function Canvas() {
             shading: doc.settings.shading,
             sag: rig.identity ? 0 : sag,
             bandInset: fit.bandInset,
+            view: doc.base.view,
+            selectedGraphic: g.id === selectedId ? selectedGraphic : null,
           };
           if (fit.layers) {
             return (

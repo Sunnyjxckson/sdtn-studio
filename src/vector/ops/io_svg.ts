@@ -12,6 +12,8 @@ import {
   type VPaint,
   type VStyle,
 } from '../../model/vector';
+import { dimShape, isExtraDim } from '../dimShapes';
+import { filterId, filterMarkup, hasEffects } from '../effects';
 
 const n2 = (n: number) => String(Math.round(n * 100) / 100);
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -38,8 +40,12 @@ function paintAttr(c: Ctx, p: VPaint | null): string {
   return `url(#${id})`;
 }
 
-function styleAttrs(c: Ctx, s: VStyle): string {
+function styleAttrs(c: Ctx, s: VStyle, it?: VItem): string {
   let a = ` fill="${paintAttr(c, s.fill)}"`;
+  if (it && hasEffects(s)) {
+    c.defs.push(filterMarkup(it));
+    a += ` filter="url(#${filterId(it.id)})"`;
+  }
   if (s.fillRule === 'evenodd') a += ' fill-rule="evenodd"';
   if (s.stroke) {
     a += ` stroke="${paintAttr(c, s.stroke)}" stroke-width="${n2(s.width)}" stroke-linecap="${s.cap}" stroke-linejoin="${s.join}"`;
@@ -51,6 +57,18 @@ function styleAttrs(c: Ctx, s: VStyle): string {
 }
 
 function dimSvg(c: Ctx, d: VDim): string {
+  if (isExtraDim(d)) {
+    const sh = dimShape(d);
+    const col = textPaint(d.style.stroke);
+    const w = d.style.width;
+    const l = sh.label;
+    return (
+      `<g${d.style.opacity < 1 ? ` opacity="${n2(d.style.opacity)}"` : ''} fill="none" stroke="${col}" stroke-linecap="round" stroke-linejoin="round">` +
+      sh.parts.map((p) => `<path d="${p.d}" stroke-width="${n2(w * p.w)}"${p.faint ? ' opacity="0.7"' : ''}/>`).join('') +
+      `<text x="${n2(l.x)}" y="${n2(l.y)}" transform="rotate(${n2(l.rot)} ${n2(l.x)} ${n2(l.y)})" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="${col}" stroke="#F4F2ED" stroke-width="3" paint-order="stroke">${esc(l.text)}</text>` +
+      `</g>`
+    );
+  }
   const g = dimGeom(d);
   const col = textPaint(d.style.stroke);
   const w = d.style.width;
@@ -76,11 +94,11 @@ function dimSvg(c: Ctx, d: VDim): string {
 
 function itemSvg(c: Ctx, it: VItem): string {
   if (it.hidden) return '';
-  if (it.kind === 'path') return `<path d="${pathD(it)}"${styleAttrs(c, it.style)}/>`;
+  if (it.kind === 'path') return `<path d="${pathD(it)}"${styleAttrs(c, it.style, it)}/>`;
   if (it.kind === 'text') {
     const rot = it.rot ? ` transform="rotate(${n2(it.rot)} ${n2(it.x)} ${n2(it.y)})"` : '';
     const ls = it.letter ? ` letter-spacing="${n2(it.letter)}"` : '';
-    return `<text x="${n2(it.x)}" y="${n2(it.y)}"${rot} font-family="${esc(it.font)}" font-weight="${it.weight}" font-size="${n2(it.size)}"${ls} text-anchor="${it.anchor}" xml:space="preserve" paint-order="stroke"${styleAttrs(c, it.style)}>${esc(it.text)}</text>`;
+    return `<text x="${n2(it.x)}" y="${n2(it.y)}"${rot} font-family="${esc(it.font)}" font-weight="${it.weight}" font-size="${n2(it.size)}"${ls} text-anchor="${it.anchor}" xml:space="preserve" paint-order="stroke"${styleAttrs(c, it.style, it)}>${esc(it.text)}</text>`;
   }
   if (it.kind === 'dim') return dimSvg(c, it);
   const mask = it.clip && it.children[0] ? it.children[0] : null;

@@ -186,10 +186,29 @@ export function XfOpts({ kind }: { kind: XfKind }) {
 
 // ---------- Measure ----------
 
+const DIM_MODES = [
+  { id: 'linear', label: 'Linear' },
+  { id: 'angular', label: 'Angular' },
+  { id: 'radius', label: 'Radius' },
+  { id: 'diameter', label: 'Diameter' },
+] as const;
+
 export function DimOpts() {
   const ppi = useMeasureOpts((s) => s.ppi);
+  const mode = useMeasureOpts((s) => s.dimMode);
   const set = useMeasureOpts((s) => s.set);
-  return <NumField label="Units per inch" value={ppi} onChange={(n) => set({ ppi: n })} step={0.1} min={0.1} max={200} />;
+  return (
+    <>
+      <div className="tabs small-tabs" role="group" aria-label="Dimension mode">
+        {DIM_MODES.map((m) => (
+          <button key={m.id} className={mode === m.id ? 'tab on' : 'tab'} data-dimmode={m.id} onClick={() => set({ dimMode: m.id })}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <NumField label="Units per inch" value={ppi} onChange={(n) => set({ ppi: n })} step={0.1} min={0.1} max={200} />
+    </>
+  );
 }
 
 export function MeasureOpts() {

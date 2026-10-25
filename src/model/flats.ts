@@ -11,19 +11,32 @@ import {
   hemPaths,
   CUFF,
   PX_IN_V,
-  WASHES,
   zig,
   bandTop,
   bandHeight,
+  pantsName,
   type Garment,
   type Pt,
   type SpecRow,
 } from './garment';
 import { computeTopSpec, dressHemV, dressLenOf, dressTopOf, silhouetteOf, sleeveOf, uv } from './top';
 import { blockParts } from './flatsBlocks';
+import { shoeMaterials, shoeSpec, shoesViews } from './flatsShoes';
 import type { TorsoProfile } from './figure';
 import { polyPath, ripPoly } from './rips';
 import type { Note } from './note';
+import {
+  bomTotal,
+  buildBom,
+  constructionOf,
+  fabricInfoOf,
+  garmentColor,
+  measureGraphic,
+  stitchName,
+  TOP_GFX,
+  type BomRow,
+  type GraphicMeasure,
+} from './production';
 
 interface V {
   x: number;
@@ -45,6 +58,24 @@ export interface FlatText {
   t: string;
   size: number;
 }
+export interface FlatGfx {
+  src: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rot: number;
+  method: string;
+}
+export interface GraphicRow extends GraphicMeasure {
+  n: number;
+  id: string;
+  name: string;
+  src: string;
+  side: 'front' | 'back';
+  method: string;
+  rot: number;
+}
 export interface FlatAnchor {
   key: string;
   label: string;
@@ -63,6 +94,10 @@ export interface FlatView {
   /** Drawn after the body and not clipped to it. */
   over?: FlatShape[];
   texts: FlatText[];
+  /** Placed artwork, in view space. */
+  gfx?: FlatGfx[];
+  /** All-over print tile, in view space. */
+  allOver?: { src: string; w: number; h: number; rot: number };
   /** Crop line: everything below is cut off. */
   cutY: number | null;
   box: { x0: number; y0: number; x1: number; y1: number };
@@ -96,6 +131,16 @@ export interface FlatModel {
   spec: SpecRow[];
   materials: { k: string; v: string; swatch?: string }[];
   notes: string[];
+  /** Placement of every graphic, in inches. */
+  graphics: GraphicRow[];
+  /** The all-over print, repeat size in inches. */
+  allOver?: { name: string; src: string; w: number; h: number; rot: number };
+  /** Color for this garment in the active colorway. */
+  colorway: { name: string; color: string; hex: string; pantone?: string };
+  construction: { k: string; v: string }[];
+  trims: { k: string; v: string }[];
+  bom: BomRow[];
+  bomTotal: number;
   sheet: { w: number; h: number; views: PlacedView[]; callouts: PlacedCallout[] };
 }
 
@@ -144,10 +189,12 @@ function jeansViews(g: Garment): FlatView[] {
   const effY = cutY ?? hemY;
   const P = garmentPaths(g, 0);
   const shorts = g.type === 'shorts';
-  const hemKind = shorts ? g.parts.hem ?? 'Clean' : 'Clean';
-  const hp = shorts ? hemPaths(g) : null;
-  const pocketP = garmentPaths({ type: g.type, points: pts, parts: { waist: 'Regular', pocket: g.parts.pocket, hem: g.parts.hem } }, 0).solid;
-  const waistP = garmentPaths({ type: g.type, points: pts, parts: { waist: g.parts.waist, pocket: 'None', hem: g.parts.hem } }, 0);
+  const pants = !!g.pants;
+  const blk = g.pants?.block;
+  const hemKind = shorts || pants ? g.parts.hem ?? 'Clean' : 'Clean';
+  const hp = shorts || pants ? hemPaths(g) : null;
+  const pocketP = garmentPaths({ type: g.type, points: pts, pants: g.pants, parts: { waist: 'Regular', pocket: g.parts.pocket, hem: g.parts.hem } }, 0).solid;
+  const waistP = garmentPaths({ type: g.type, points: pts, pants: g.pants, parts: { waist: g.parts.waist, pocket: 'None', hem: g.parts.hem } }, 0);
   const ct = top;
   const clip = P.body + ' ' + P.band;
   const bx = bbox([...poly, { x: wl.x, y: bandTop(pts) }, { x: wr.x, y: bandTop(pts) }, { x: wl.x, y: effY + 3 }]);
@@ -164,6 +211,8 @@ function jeansViews(g: Garment): FlatView[] {
   const hemDesc =
     cutY != null
       ? 'Cut hem, raw edge'
+      : hemKind === 'Rib'
+        ? `Rib cuff, 2x2 rib, ${f1(CUFF / PX_IN_V)} in`
       : hemKind === 'Cuffed'
         ? `Cuffed hem, ${f1(CUFF / PX_IN_V)} in turn up, stitched at the top`
         : hemKind === 'Raw'
@@ -171,8 +220,8 @@ function jeansViews(g: Garment): FlatView[] {
           : 'Hem, single needle topstitch';
 
   const hemShapes = (): FlatShape[] =>
-    hemKind === 'Cuffed' && hp
-      ? [{ d: hp.cuff, k: 'line' }, { d: hp.cuffLine, k: 'line' }, { d: hp.cuffStitch, k: 'stitch' }]
+    (hemKind === 'Cuffed' || hemKind === 'Rib') && hp
+      ? [{ d: hp.cuff, k: 'line' }, ...(hp.rib ? [{ d: hp.rib, k: 'rib' as const }] : []), { d: hp.cuffLine, k: 'line' }, { d: hp.cuffStitch, k: 'stitch' }]
       : hemKind === 'Raw' && hp
         ? [{ d: hp.wear, k: 'rip' }]
         : [{ d: hs.d, k: 'stitch' }];
@@ -187,9 +236,23 @@ function jeansViews(g: Garment): FlatView[] {
     { key: 'band', label: 'Waistband', desc: WAIST_DESC[g.parts.waist] ?? WAIST_DESC.Regular, x: wl.x + 28, y: top - 6 },
   ];
   const pk = g.parts.pocket;
-  if (pk !== 'None') fa.push({ key: 'fpocket', label: 'Front pockets', desc: 'Scoop pockets, topstitched opening', x: wl.x + 20.5, y: top + 29 });
+  if (pk !== 'None')
+    fa.push({ key: 'fpocket', label: 'Front pockets', desc: blk === 'Trouser' ? 'Slant pockets, topstitched opening' : 'Scoop pockets, topstitched opening', x: wl.x + (blk === 'Trouser' ? 22 : 20.5), y: top + 29 });
+  if (blk === 'Cargo') {
+    const yc = cr.y + 50;
+    const ex = scan(poly, yc)[0] ?? 78;
+    fa.push({ key: 'cargo', label: 'Cargo pockets', desc: 'Bellows thigh pockets, flap with snap, topstitched', x: ex + 16, y: yc });
+    fa.push({ key: 'kneedart', label: 'Knee darts', desc: 'Darted knees for ease', x: findPoint(pts, 'kneeLi').x - 8, y: findPoint(pts, 'kneeLi').y - 18 });
+  }
+  if (blk === 'Trouser' && g.pants?.pleats) fa.push({ key: 'pleats', label: 'Pleats', desc: 'Forward pleats, pressed toward the pockets', x: wl.x + 50, y: top + 22 });
+  if (blk === 'Trouser') {
+    const yy = cr.y + 70;
+    const xs0 = scan(poly, yy);
+    fa.push({ key: 'crease', label: 'Pressed crease', desc: 'Front crease, pressed in', x: xs0.length >= 2 ? (xs0[0] + xs0[1]) / 2 : 120, y: yy });
+  }
+  if (blk === 'Legging') fa.push({ key: 'flat', label: 'Flatlock seams', desc: 'Flatlock seams, no topstitching', x: scan(poly, cr.y + 60)[0] + 5, y: cr.y + 60 });
   if (pk === 'Coin') fa.push({ key: 'coin', label: 'Coin pocket', desc: 'Patch coin pocket, topstitched', x: wr.x - 31, y: top + 26 });
-  if (pk === 'Cargo') {
+  if (pk === 'Cargo' && !pants) {
     if (shorts) {
       const bot = Math.min(284, effY - 14 - (hemKind === 'Cuffed' ? CUFF : 0));
       const topY = Math.max(bot - 54, wl.y + 40);
@@ -197,8 +260,10 @@ function jeansViews(g: Garment): FlatView[] {
       fa.push({ key: 'cargo', label: 'Cargo pockets', desc: 'Patch thigh pockets, flap with topstitch', x: edge + 15, y: (topY + bot) / 2 });
     } else fa.push({ key: 'cargo', label: 'Cargo pockets', desc: 'Patch cargo pockets, flap with topstitch', x: 91, y: 284 });
   }
-  fa.push({ key: 'fly', label: 'Fly', desc: 'Zip fly, J stitch, bar tack', x: 160, y: ct + 28 });
-  if (P.button) fa.push({ key: 'button', label: 'Button and rivets', desc: 'Metal shank button, 2 rivets at pocket corners', x: P.button.x, y: P.button.y });
+  if (blk === 'Legging' || blk === 'Jogger') {
+    // elastic waist: no fly
+  } else fa.push({ key: 'fly', label: 'Fly', desc: 'Zip fly, J stitch, bar tack', x: 160, y: ct + 28 });
+  if (P.button) fa.push({ key: 'button', label: pants ? 'Button' : 'Button and rivets', desc: pants ? 'Metal shank button' : 'Metal shank button, 2 rivets at pocket corners', x: P.button.x, y: P.button.y });
   if (g.parts.waist === 'Belt loops') fa.push({ key: 'loops', label: 'Belt loops', desc: '4 belt loops, bar tacked', x: wl.x + (wr.x - wl.x) * 0.7, y: top - 7 });
   if (g.parts.waist === 'Drawcord') fa.push({ key: 'cord', label: 'Drawcord', desc: 'Drawcord, finished with metal tips', x: 139, y: ct + 24 });
   if (g.parts.waist === 'Knee strap' && P.strap) {
@@ -218,6 +283,7 @@ function jeansViews(g: Garment): FlatView[] {
     { d: pocketP, k: 'stitch', t: [0, 2.6] },
     { d: waistP.solid, k: 'line' },
     { d: P.details, k: 'stitch' },
+    ...(P.crease ? [{ d: P.crease, k: 'seam' as const }] : []),
     ...common(),
     ...(waistP.strap ? [{ d: waistP.strap, k: 'line' as const }] : []),
     ...P.rivets.map((r) => ({ d: circleD(r.x, r.y, 1.8), k: 'line' as const })),
@@ -239,6 +305,7 @@ function jeansViews(g: Garment): FlatView[] {
 
   // back: yoke, patch pockets, belt loops, center back seam
   const yoke = top + 30;
+  const plain = pants && blk !== 'Cargo';
   const xs = scan(poly, yoke);
   const xL = xs.length ? xs[0] : wl.x - 6, xR = xs.length ? xs[xs.length - 1] : wr.x + 6;
   const yokeD = `M${f1(xL)},${f1(yoke)} L150,${f1(top + 46)} L${f1(xR)},${f1(yoke)}`;
@@ -251,16 +318,23 @@ function jeansViews(g: Garment): FlatView[] {
   const cxL = wl.x + (150 - wl.x) * 0.5, cxR = wr.x - (wr.x - 150) * 0.5;
   const backShapes: FlatShape[] = [
     { d: P.band, k: 'line', fill: true },
-    { d: yokeD, k: 'seam' },
-    { d: yokeD, k: 'stitch', t: [0, 2.6] },
-    { d: seamD, k: 'seam' },
-    { d: seamD, k: 'stitch', t: [2.4, 0] },
+    ...(plain ? [] : [{ d: yokeD, k: 'seam' as const }, { d: yokeD, k: 'stitch' as const, t: [0, 2.6] as [number, number] }]),
+    { d: plain ? `M150,${f1(top + 2)} L150,${f1(cr.y)}` : seamD, k: 'seam' },
+    { d: plain ? `M150,${f1(top + 2)} L150,${f1(cr.y)}` : seamD, k: 'stitch', t: [2.4, 0] },
   ];
   const bAnch: FlatAnchor[] = [
     { key: 'band', label: 'Waistband', desc: WAIST_DESC[g.parts.waist] ?? WAIST_DESC.Regular, x: wl.x + 28, y: top - 6 },
-    { key: 'yoke', label: 'Back yoke', desc: 'Pointed yoke seam, topstitched, center back seam', x: xL + 12, y: yoke + 1.5 },
+    plain
+      ? { key: 'cbseam', label: 'Centre back seam', desc: 'Centre back seam, overlocked and topstitched', x: 152, y: top + 40 }
+      : { key: 'yoke', label: 'Back yoke', desc: 'Pointed yoke seam, topstitched, center back seam', x: xL + 12, y: yoke + 1.5 },
   ];
-  if (pk !== 'None') {
+  if (blk === 'Trouser') {
+    for (const cx of [cxL, cxR]) {
+      const y0 = top + 38;
+      backShapes.push({ d: `M${f1(cx - 14)},${f1(y0)} L${f1(cx + 14)},${f1(y0)} M${f1(cx - 14)},${f1(y0 + 4)} L${f1(cx + 14)},${f1(y0 + 4)}`, k: 'line' });
+    }
+    bAnch.push({ key: 'welt', label: 'Welt pockets', desc: 'Double jetted back pockets, button closure', x: cxR + 14, y: top + 40 });
+  } else if (pk !== 'None' && !plain) {
     backShapes.push(
       { d: pocket(cxL), k: 'line' },
       { d: pocket(cxR), k: 'line' },
@@ -637,9 +711,41 @@ function dressSpec(g: Garment, torso: TorsoProfile): SpecRow[] {
   return rows;
 }
 
-export function buildFlat(g: Garment, torso: TorsoProfile): FlatModel {
+const SHOE_K = 1.2;
+
+export function buildFlat(g: Garment, torso: TorsoProfile, cwName?: string): FlatModel {
   const isTop = g.type === 'top' && !!g.top;
-  const views = isTop ? topViews(g) : g.type === 'skirt' ? skirtViews(g) : jeansViews(g);
+  const isShoes = g.type === 'shoes' && !!g.shoes;
+  const views = isTop ? topViews(g) : isShoes ? shoesViews(g) : g.type === 'skirt' ? skirtViews(g) : jeansViews(g);
+
+  // graphics and the all-over print, on the side of the garment they belong to
+  const bandY = isTop ? 0 : g.type === 'skirt' ? findPoint(g.points, 'waistL').y - bandHeight(g.parts.waist) : bandTop(g.points);
+  const k = isTop ? TOP_GFX : isShoes ? SHOE_K : 1;
+  const graphics: GraphicRow[] = [];
+  (g.graphics ?? []).forEach((gr, i) => {
+    const view = views.find((v) => v.id === gr.side) ?? (isShoes ? views[0] : undefined);
+    if (!view) return;
+    const m = measureGraphic(g, gr, torso, bandY);
+    const w = gr.w * k, h = w * gr.aspect;
+    const c = isShoes
+      ? { x: (view.box.x0 + view.box.x1) / 2 + (gr.x - 150) * SHOE_K, y: view.box.y1 - 60 + (gr.y - 150) * SHOE_K }
+      : isTop ? { x: gr.x, y: 100 + (gr.y - 100) * SY } : { x: gr.x, y: gr.y };
+    (view.gfx ??= []).push({ src: gr.src, x: c.x, y: c.y, w, h, rot: gr.rot, method: gr.method });
+    const n = graphics.length + 1;
+    graphics.push({ ...m, n, id: gr.id, name: gr.name, src: gr.src, side: gr.side, method: gr.method, rot: gr.rot });
+    view.anchors.push({
+      key: `gfx${i}`,
+      label: `Graphic ${n}`,
+      desc: `${gr.method}, ${gr.name}, ${m.w} x ${m.h} in, ${m.fromCenter} in from ${gr.side === 'front' ? 'center front' : 'center back'}, ${m.fromRef} in below ${m.refName}`,
+      x: c.x,
+      y: c.y,
+    });
+  });
+  const allOverIn = g.allOver ? measureGraphic(g, { w: g.allOver.scale, aspect: g.allOver.aspect, x: 150, y: 150 } as never, torso, bandY) : null;
+  if (g.allOver) {
+    const w = Math.max(4, g.allOver.scale * k);
+    for (const v of views) v.allOver = { src: g.allOver.src, w, h: w * g.allOver.aspect, rot: g.allOver.rot };
+  }
   const keyN = new Map<string, number>();
   const legend: LegendRow[] = [];
   for (const v of views)
@@ -649,11 +755,19 @@ export function buildFlat(g: Garment, torso: TorsoProfile): FlatModel {
         legend.push({ n: legend.length + 1, label: a.label, desc: a.desc });
       }
   const o = g.top;
-  let spec: SpecRow[] = isTop ? (o?.block === 'Dress' ? dressSpec(g, torso) : computeTopSpec(g.points, torso)) : computeSpec(g);
-  const materials: FlatModel['materials'] = [
-    { k: 'Fabric', v: g.fabric },
-    { k: 'Wash', v: g.wash, swatch: WASHES[g.wash] },
-  ];
+  let spec: SpecRow[] = isShoes ? shoeSpec(g.shoes!) : isTop ? (o?.block === 'Dress' ? dressSpec(g, torso) : computeTopSpec(g.points, torso)) : computeSpec(g);
+  const col = garmentColor(g);
+  const fi = fabricInfoOf(g);
+  const materials: FlatModel['materials'] = isShoes
+    ? shoeMaterials(g)
+    : [
+        { k: 'Fabric', v: g.fabric },
+        { k: 'Content', v: `${fi.content}, ${fi.weight}` },
+        { k: g.colorHex ? 'Color' : 'Wash', v: col.name, swatch: col.hex },
+      ];
+  if (col.pantone) materials.push({ k: 'Pantone', v: col.pantone });
+  if (cwName) materials.push({ k: 'Colorway', v: cwName });
+  if (g.allOver) materials.push({ k: 'All-over print', v: g.allOver.name });
   const notes: string[] = ['Dashed lines are topstitching. Solid inner lines are seams.'];
   if (isTop && o) {
     materials.push({ k: 'Block', v: o.block }, { k: 'Fit', v: o.fit });
@@ -669,6 +783,8 @@ export function buildFlat(g: Garment, torso: TorsoProfile): FlatModel {
     }
     if (o.block === 'Hoodie') notes.push('Rib trim is 2x2 rib in the body fabric colour.');
     if (o.block === 'Moto jacket') notes.push('Front zip runs on a slant from the chest to the left hip.');
+  } else if (isShoes) {
+    notes.push('Side view shows the lateral profile. Dashed lines are topstitching.');
   } else if (g.type === 'skirt' && g.skirt) {
     spec = [...spec];
     spec.splice(4, 0, { k: 'Waistband', v: `${half(bandHeight(g.parts.waist) / PX_IN_V)} in` });
@@ -684,12 +800,37 @@ export function buildFlat(g: Garment, torso: TorsoProfile): FlatModel {
     materials.push({ k: 'Block', v: `${g.shorts?.length ?? 'Short'} shorts` }, { k: 'Fit', v: `${g.fit}, ${g.rise} rise` }, { k: 'Waistband', v: g.parts.waist }, { k: 'Front pockets', v: g.parts.pocket }, { k: 'Hem', v: g.parts.hem ?? 'Clean' });
     if (g.cropY != null) notes.push('Cropped: leg is cut at the line shown, raw edge.');
   } else {
-    materials.push({ k: 'Block', v: 'Five pocket' }, { k: 'Fit', v: `${g.fit}, ${g.rise} rise` }, { k: 'Waistband', v: g.parts.waist }, { k: 'Front pockets', v: g.parts.pocket });
+    materials.push({ k: 'Block', v: g.pants ? pantsName(g.pants) : 'Five pocket' }, { k: 'Fit', v: `${g.fit}, ${g.rise} rise` }, { k: 'Waistband', v: g.parts.waist }, { k: 'Front pockets', v: g.parts.pocket });
+    if (g.pants?.block === 'Jogger') notes.push('Rib cuffs are 2x2 rib in the body fabric colour.');
+    if (g.pants?.block === 'Legging') notes.push('Four-way stretch fabric, flatlock seams, elastic waistband.');
     if (g.cropY != null) notes.push('Cropped: leg is cut at the line shown, raw edge.');
   }
   if (g.holes.length) notes.push(`${g.holes.length} ripped ${g.holes.length === 1 ? 'opening' : 'openings'}, placement as drawn on the front.`);
   if (g.distress.length) notes.push(`${g.distress.length} distressed ${g.distress.length === 1 ? 'area' : 'areas'}, hand sanded.`);
-  return { g, views, legend, spec, materials, notes, sheet: layout(views, keyN) };
+  if (graphics.length) notes.push(`${graphics.length} ${graphics.length === 1 ? 'graphic' : 'graphics'}, placement and method on the Graphics page.`);
+  const cons = constructionOf(g);
+  const construction = [
+    { k: 'Stitch', v: stitchName(cons.stitch) },
+    { k: 'Stitches per inch', v: `${cons.spi}` },
+    { k: 'Seam finish', v: cons.seam },
+  ];
+  const bom = buildBom(g, new Map(graphics.map((r) => [r.id, r])));
+  return {
+    g,
+    views,
+    legend,
+    spec,
+    materials,
+    notes,
+    graphics,
+    allOver: g.allOver && allOverIn ? { name: g.allOver.name, src: g.allOver.src, w: allOverIn.w, h: allOverIn.h, rot: g.allOver.rot } : undefined,
+    colorway: { name: cwName ?? '', color: col.name, hex: col.hex, pantone: col.pantone },
+    construction,
+    trims: (g.trims ?? []).map((t) => ({ k: t.kind, v: `x${t.qty}` })),
+    bom,
+    bomTotal: bomTotal(bom),
+    sheet: layout(views, keyN),
+  };
 }
 
 // ---------- svg output ----------
@@ -710,6 +851,26 @@ const STYLE: Record<ShapeKind, string> = {
 const shapeSvg = (sh: FlatShape) =>
   `<path d="${sh.d}" ${STYLE[sh.k]}${sh.fill ? ' fill="#ffffff"' : ''}${sh.t ? ` transform="translate(${sh.t[0]} ${sh.t[1]})"` : ''}/>`;
 
+/** The all-over print as repeated copies of one image, covering the view (clipped by the caller). */
+function allOverSvg(v: FlatView, id: string): string {
+  const a = v.allOver!;
+  const b = v.box;
+  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  const R = Math.hypot(b.x1 - b.x0, b.y1 - b.y0) / 2 + Math.max(a.w, a.h);
+  let w = a.w, h = a.h;
+  // keep the copy count sane for very small tiles
+  const cap = Math.sqrt(((2 * R) / w) * ((2 * R) / h) / 700);
+  if (cap > 1) {
+    w *= cap;
+    h *= cap;
+  }
+  const cols = Math.ceil((2 * R) / w), rows = Math.ceil((2 * R) / h);
+  let o = `<defs><image id="ao-${id}" href="${a.src}" width="${f1(w)}" height="${f1(h)}" preserveAspectRatio="none"/></defs>`;
+  o += `<g opacity="0.82" transform="rotate(${f1(a.rot)} ${f1(cx)} ${f1(cy)})">`;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) o += `<use href="#ao-${id}" x="${f1(cx - R + c * w)}" y="${f1(cy - R + r * h)}"/>`;
+  return o + `</g>`;
+}
+
 /** The flat sheet as svg markup, without the outer svg element. Sheet space, white background. */
 export function flatSheetBody(m: FlatModel, font = "'IBM Plex Mono', Helvetica, Arial, sans-serif"): string {
   const { sheet } = m;
@@ -727,6 +888,10 @@ export function flatSheetBody(m: FlatModel, font = "'IBM Plex Mono', Helvetica, 
     s += `<path d="${v.outline}" fill="#ffffff" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>`;
     s += `<g clip-path="url(#${cid})">`;
     for (const sh of v.shapes) s += shapeSvg(sh);
+    if (v.allOver) s += allOverSvg(v, `${uid}-${i}`);
+    for (const gx of v.gfx ?? []) {
+      s += `<image href="${gx.src}" x="${f1(gx.x - gx.w / 2)}" y="${f1(gx.y - gx.h / 2)}" width="${f1(gx.w)}" height="${f1(gx.h)}" preserveAspectRatio="none" transform="rotate(${f1(gx.rot)} ${f1(gx.x)} ${f1(gx.y)})"/>`;
+    }
     s += `</g>`;
     for (const sh of v.over ?? []) s += shapeSvg(sh);
     for (const t of v.texts) {

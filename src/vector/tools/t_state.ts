@@ -23,5 +23,5 @@ export const useXfOpts = make({
   shear: 20,
   shearAxis: 'h' as 'h' | 'v',
 });
-export const useMeasureOpts = make({ ppi: PX_IN_V, readout: '' });
+export const useMeasureOpts = make({ ppi: PX_IN_V, readout: '', dimMode: 'linear' as 'linear' | 'angular' | 'radius' | 'diameter' });
 export const useBlendOpts = make({ steps: 6 });

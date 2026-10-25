@@ -26,6 +26,10 @@ import { editStyle, selectedItems, shownStyle, transformSelection, vs } from '..
 import { toolById, VTOOLS } from '../../vector/tools';
 import { Icon } from '../icons';
 import { AlignPanel } from './extra/AlignPanel';
+import { ArtboardsPanel } from './extra/ArtboardsPanel';
+import { EffectsPanel } from './extra/EffectsPanel';
+import { EnvelopePanel } from './extra/EnvelopePanel';
+import { SymbolsPanel } from './extra/SymbolsPanel';
 import { FilePanel } from './extra/FilePanel';
 import { GradientPanel } from './extra/GradientPanel';
 import { PathfinderPanel } from './extra/PathfinderPanel';
@@ -280,6 +284,8 @@ export function VectorLeftPanel() {
   return (
     <aside className="panel left">
       <LayersPanel />
+      <ArtboardsPanel />
+      <SymbolsPanel />
       <FilePanel />
     </aside>
   );
@@ -513,6 +519,8 @@ export function VectorRightPanel() {
     <aside className="panel right">
       <SelectionTitle />
       <AppearancePanel />
+      <EffectsPanel />
+      <EnvelopePanel />
       <SwatchesPanel />
       <GradientPanel />
       <TransformPanel />

@@ -3,6 +3,7 @@ import { DEFAULT_SKIN, type Sex, type SkinId, type View } from './croquis';
 import type { Note } from './note';
 import type { PoseId } from './figure';
 import { emptyDrawing, normalizeDrawing, type Drawing } from './draw';
+import type { Colorway, PaletteColor, SavedPalette } from './production';
 import { emptyVector, normalizeVector, type VectorDoc } from './vector';
 
 export type RenderMode = 'line' | 'rendered';
@@ -18,6 +19,12 @@ export interface Doc {
   drawing: Drawing;
   /** Vector mode artwork, over the garments. */
   vector: VectorDoc;
+  /** Custom named colors, and palettes saved from them. */
+  palette?: PaletteColor[];
+  palettes?: SavedPalette[];
+  /** Colorways for the look: each one colors every garment at once. */
+  colorways?: Colorway[];
+  activeColorway?: string;
 }
 
 export const emptyDoc = (): Doc => ({
@@ -38,7 +45,7 @@ export function normalizeDoc(d: Doc): Doc {
     ...d,
     base: { ...e.base, ...d.base },
     settings: { ...e.settings, ...d.settings },
-    garments: d.garments.map(normalizeGarment),
+    garments: (d.garments ?? []).map(normalizeGarment),
     notes: d.notes ?? [],
     drawing: normalizeDrawing(d.drawing),
     vector: normalizeVector(d.vector),

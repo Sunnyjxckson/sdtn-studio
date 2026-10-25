@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Draft } from 'immer';
-import { emptyDoc, normalizeDoc, type Doc, type RenderMode } from './model/doc';
+import { current, type Draft } from 'immer';
+import { emptyDoc, type Doc, type RenderMode } from './model/doc';
+import { cloneDoc, docTitle, newLook, newProject, normalizeProject, styleKey, type MoodItem, type Project, type StyleInfo } from './model/project';
+import type { Summary } from './persist';
 import type { Note } from './model/note';
 import type { Sex, SkinId, View } from './model/croquis';
 import type { PoseId } from './model/figure';
@@ -12,6 +14,10 @@ import {
   buildSkirtPoints,
   createShorts,
   createSkirt,
+  createPants,
+  buildPantsPoints,
+  pantsName,
+  type PantsOpts,
   SHORTS_INSEAM,
   SKIRT_LEN,
   shortsName as shortsLabel,
@@ -37,13 +43,30 @@ import {
   type WashName,
 } from './model/garment';
 import { placeOnCroquis } from './model/placement';
+import { createShoes, shoeName, type ShoeOpts } from './model/shoes';
 import { BLOCK_LOOK, buildTopPoints, topName, type TopOpts } from './model/top';
-import { newId } from './model/garment';
+import { newId, PANTS_LOOK } from './model/garment';
 import { defaultStyle, type VectorDoc, type VStyle, findItem } from './model/vector';
+import { makeProductionActions, syncColorway, type ProductionActions } from './productionStore';
 import { brushById, MAX_DRAW_LAYERS, newDrawLayer, type BrushId, type DrawLayer, type Drawing, type Stroke } from './model/draw';
 
 export type Tool = 'move' | 'add' | 'erase' | 'cut' | 'hole' | 'distress' | 'text' | 'note' | 'hand';
-export type Tab = 'sketch' | 'draw' | 'vector' | 'flats' | 'pattern';
+export type Tab = 'sketch' | 'draw' | 'vector' | 'flats' | 'pattern' | 'lineup' | 'linesheet' | 'mood';
+export const COLLECTION_TABS: Tab[] = ['lineup', 'linesheet', 'mood'];
+
+/** An undo entry for a look or project level edit: the whole project, with the open look's doc merged in. */
+export interface Struct {
+  __s: 1;
+  project: Project;
+}
+export type Hist = Doc | Struct;
+const isStruct = (h: Hist): h is Struct => (h as Struct).__s === 1;
+
+/** The project with the open look's working doc written back into it. */
+export const fullProject = (s: { project: Project; doc: Doc }): Project => ({
+  ...s.project,
+  looks: s.project.looks.map((l) => (l.id === s.project.activeLook ? { ...l, doc: s.doc } : l)),
+});
 
 /** A selected anchor in vector mode: path id, sub path, node index. */
 export interface NodeRef {
@@ -112,10 +135,14 @@ export interface Viewport {
   k: number;
 }
 
-interface State {
+interface State extends ProductionActions {
+  /** The open look's working doc. project.looks[active].doc is stale until fullProject merges it. */
   doc: Doc;
-  past: Doc[];
-  future: Doc[];
+  project: Project;
+  projects: Summary[];
+  screen: 'home' | 'studio';
+  past: Hist[];
+  future: Hist[];
   /** Key of the last coalesced edit, so typing makes one undo step. */
   coalesceKey: string | null;
   ready: boolean;
@@ -157,7 +184,27 @@ interface State {
   redo: () => void;
 
   // lifecycle
-  hydrate: (doc: Doc | null, selectedId: string | null) => void;
+  hydrate: (project: Project, selectedId: string | null) => void;
+  setProjects: (p: Summary[]) => void;
+  showHome: () => void;
+  ready0: () => void;
+
+  // collection: looks and project (undoable)
+  setActiveLook: (id: string) => void;
+  addLook: () => void;
+  duplicateLook: (id: string) => void;
+  deleteLook: (id: string) => void;
+  moveLook: (id: string, dir: 1 | -1) => void;
+  renameLook: (id: string, name: string) => void;
+  copyGarmentToLook: (garmentId: string, lookId: string) => void;
+  setProjectInfo: (patch: { name?: string; season?: string }) => void;
+  setStyleInfo: (key: string, patch: Partial<StyleInfo>) => void;
+  addMood: (item: MoodItem) => void;
+  removeMood: (id: string) => void;
+  /** Start a mood drag: one undo step, then editMood moves freely. */
+  beginMood: () => void;
+  editMood: (id: string, patch: Partial<MoodItem>) => void;
+  setMoodText: (id: string, text: string) => void;
 
   // ui
   setTool: (t: Tool) => void;
@@ -196,6 +243,10 @@ interface State {
   addJeans: (fit: Fit) => void;
   addShorts: (length: ShortsLength) => void;
   addSkirt: (shape: SkirtShape, length?: SkirtLength) => void;
+  addPants: (o: PantsOpts) => void;
+  setPants: (id: string, patch: Partial<PantsOpts>) => void;
+  addShoes: (o: ShoeOpts) => void;
+  setShoes: (id: string, patch: Partial<ShoeOpts>) => void;
   setShortsLength: (id: string, length: ShortsLength) => void;
   setHem: (id: string, hem: HemKind) => void;
   setSkirt: (id: string, patch: { shape?: SkirtShape; length?: SkirtLength }) => void;
@@ -230,6 +281,38 @@ export const activeDrawLayer = (s: { doc: Doc; activeLayer: string | null }): Dr
   return ls[activeIndex(ls, s.activeLayer)];
 };
 
+/** Write the working doc back into the project, so structural edits see every look's current state. */
+function syncIn(st: Draft<State>) {
+  const l = st.project.looks.find((x) => x.id === st.project.activeLook);
+  if (l) l.doc = st.doc;
+}
+/** After a structural edit: the open look may have changed, and the doc title follows the names. */
+function afterStruct(st: Draft<State>) {
+  for (const l of st.project.looks) {
+    const t = docTitle(st.project.season, l.name);
+    if (l.doc.name !== t) l.doc = { ...l.doc, name: t };
+  }
+  const act = st.project.looks.find((x) => x.id === st.project.activeLook) ?? st.project.looks[0];
+  st.project.activeLook = act.id;
+  st.doc = act.doc;
+  resetSelection(st);
+}
+function resetSelection(st: Draft<State>) {
+  if (st.selectedId && !st.doc.garments.some((g) => g.id === st.selectedId)) st.selectedId = null;
+  st.selectedText = null;
+  if (st.selectedNote && !st.doc.notes.some((n) => n.id === st.selectedNote)) st.selectedNote = null;
+  st.vsel = [];
+  st.vnodes = [];
+  st.activeLayer = null;
+}
+function applyStruct(st: Draft<State>, snap: Struct) {
+  st.project = snap.project;
+  const act = snap.project.looks.find((x) => x.id === snap.project.activeLook) ?? snap.project.looks[0];
+  st.doc = act.doc;
+  st.coalesceKey = null;
+  resetSelection(st);
+}
+
 export const useStore = create<State>()(
   immer((set, get) => {
     /** Run a discrete edit as one undo step. */
@@ -240,8 +323,42 @@ export const useStore = create<State>()(
       });
     };
 
+    /** Run a look or project level edit as one undo step (a whole project snapshot). */
+    const pstep = (fn: (p: Draft<Project>) => void, o: { coalesce?: string; clear?: boolean } = {}) => {
+      const s0 = get();
+      if (!(o.coalesce && s0.coalesceKey === o.coalesce)) {
+        const snap: Struct = { __s: 1, project: fullProject(s0) };
+        set((st) => {
+          if (o.clear) st.past = [];
+          st.past.push(snap);
+          if (st.past.length > HISTORY_LIMIT) st.past.shift();
+          st.future = [];
+          st.coalesceKey = o.coalesce ?? null;
+        });
+      }
+      set((st) => {
+        syncIn(st);
+        fn(st.project);
+        afterStruct(st);
+      });
+    };
+    const switchTo = (id: string) => {
+      set((st) => {
+        syncIn(st);
+        st.project.activeLook = id;
+        afterStruct(st);
+        st.past = [];
+        st.future = [];
+        st.coalesceKey = null;
+      });
+    };
+
     return {
+      ...makeProductionActions(step, set as never),
       doc: emptyDoc(),
+      project: newProject(),
+      projects: [],
+      screen: 'studio',
       past: [],
       future: [],
       coalesceKey: null,
@@ -304,6 +421,11 @@ export const useStore = create<State>()(
         set((s) => {
           const prev = s.past.pop();
           if (!prev) return;
+          if (isStruct(prev)) {
+            s.future.push({ __s: 1, project: fullProject(current(s)) });
+            applyStruct(s, prev);
+            return;
+          }
           s.future.push(s.doc);
           s.doc = prev;
           s.coalesceKey = null;
@@ -317,6 +439,11 @@ export const useStore = create<State>()(
         set((s) => {
           const next = s.future.pop();
           if (!next) return;
+          if (isStruct(next)) {
+            s.past.push({ __s: 1, project: fullProject(current(s)) });
+            applyStruct(s, next);
+            return;
+          }
           s.past.push(s.doc);
           s.doc = next;
           s.coalesceKey = null;
@@ -327,14 +454,149 @@ export const useStore = create<State>()(
           s.vnodes = s.vnodes.filter((n) => s.vsel.includes(n.id));
         }),
 
-      hydrate: (doc, selectedId) =>
+      hydrate: (project, selectedId) =>
         set((s) => {
-          if (doc) {
-            s.doc = normalizeDoc(doc);
-            s.selectedId = selectedId && doc.garments.some((g) => g.id === selectedId) ? selectedId : null;
-          }
+          const p = normalizeProject(project);
+          s.project = p;
+          s.doc = p.looks.find((l) => l.id === p.activeLook)!.doc;
+          s.selectedId = selectedId && s.doc.garments.some((g) => g.id === selectedId) ? selectedId : null;
+          s.selectedText = null;
+          s.selectedNote = null;
+          s.past = [];
+          s.future = [];
+          s.coalesceKey = null;
+          s.vsel = [];
+          s.vnodes = [];
+          s.activeLayer = null;
+          s.screen = 'studio';
           s.ready = true;
         }),
+      setProjects: (p) =>
+        set((s) => {
+          s.projects = p;
+        }),
+      showHome: () =>
+        set((s) => {
+          s.screen = 'home';
+          s.ready = true;
+        }),
+      ready0: () =>
+        set((s) => {
+          s.ready = true;
+        }),
+
+      setActiveLook: (id) => {
+        if (id === get().project.activeLook) return;
+        switchTo(id);
+      },
+      addLook: () => {
+        const p = fullProject(get());
+        const n = Math.max(0, ...p.looks.map((l) => Number(/^Look (\d+)$/.exec(l.name)?.[1] ?? 0)), p.looks.length) + 1;
+        const look = newLook(n, get().doc, p.season);
+        pstep(
+          (pr) => {
+            pr.looks.push(look);
+            pr.activeLook = look.id;
+          },
+          { clear: true },
+        );
+      },
+      duplicateLook: (id) => {
+        const p = fullProject(get());
+        const i = p.looks.findIndex((l) => l.id === id);
+        if (i < 0) return;
+        const copy = { id: newId(), name: `${p.looks[i].name} copy`, doc: cloneDoc(p.looks[i].doc) };
+        pstep(
+          (pr) => {
+            pr.looks.splice(i + 1, 0, copy);
+            pr.activeLook = copy.id;
+          },
+          { clear: true },
+        );
+      },
+      deleteLook: (id) => {
+        const p = get().project;
+        if (p.looks.length <= 1) return;
+        const wasActive = p.activeLook === id;
+        pstep(
+          (pr) => {
+            const i = pr.looks.findIndex((l) => l.id === id);
+            if (i < 0) return;
+            pr.looks.splice(i, 1);
+            if (wasActive) pr.activeLook = pr.looks[Math.max(0, i - 1)].id;
+          },
+          { clear: wasActive },
+        );
+      },
+      moveLook: (id, dir) => {
+        const arr = get().project.looks;
+        const i = arr.findIndex((l) => l.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= arr.length) return;
+        pstep((pr) => {
+          const [l] = pr.looks.splice(i, 1);
+          pr.looks.splice(j, 0, l);
+        });
+      },
+      renameLook: (id, name) =>
+        pstep(
+          (pr) => {
+            const l = pr.looks.find((x) => x.id === id);
+            if (l) l.name = name;
+          },
+          { coalesce: `lookname:${id}` },
+        ),
+      copyGarmentToLook: (garmentId, lookId) => {
+        const p = fullProject(get());
+        const src = p.looks.find((l) => l.id === p.activeLook)?.doc.garments.find((g) => g.id === garmentId);
+        const dst = p.looks.find((l) => l.id === lookId);
+        if (!src || !dst || dst.id === p.activeLook) return;
+        const copy: Garment = JSON.parse(JSON.stringify(src));
+        copy.id = newId();
+        copy.src = styleKey(src);
+        copy.visible = true;
+        if (copy.type !== 'top') copy.transform = placeOnCroquis(copy, dst.doc.base.sex, dst.doc.base.view);
+        pstep((pr) => {
+          pr.looks.find((l) => l.id === lookId)?.doc.garments.push(copy);
+        });
+      },
+      setProjectInfo: (patch) =>
+        pstep(
+          (pr) => {
+            Object.assign(pr, patch);
+          },
+          { coalesce: 'projinfo' },
+        ),
+      setStyleInfo: (key, patch) =>
+        pstep(
+          (pr) => {
+            pr.styles[key] = { ...pr.styles[key], ...patch };
+          },
+          { coalesce: `style:${key}:${Object.keys(patch).join(',')}` },
+        ),
+      addMood: (item) =>
+        pstep((pr) => {
+          pr.mood.push(item);
+        }),
+      removeMood: (id) =>
+        pstep((pr) => {
+          pr.mood = pr.mood.filter((m) => m.id !== id);
+        }),
+      beginMood: () => pstep(() => {}),
+      editMood: (id, patch) =>
+        set((s) => {
+          const m = s.project.mood.find((x) => x.id === id);
+          if (m) Object.assign(m, patch);
+        }),
+      setMoodText: (id, text) =>
+        pstep(
+          (pr) => {
+            const m = pr.mood.find((x) => x.id === id);
+            if (m && m.kind === 'note') m.text = text;
+            else if (m && m.kind === 'chip') m.label = text;
+          },
+          { coalesce: `moodtext:${id}` },
+        ),
 
       setTool: (t) =>
         set((s) => {
@@ -346,7 +608,10 @@ export const useStore = create<State>()(
         }),
       select: (id) =>
         set((s) => {
-          if (s.selectedId !== id) s.selectedText = null;
+          if (s.selectedId !== id) {
+            s.selectedText = null;
+            s.selectedGraphic = null;
+          }
           s.selectedId = id;
           if (id) s.selectedNote = null;
         }),
@@ -543,6 +808,52 @@ export const useStore = create<State>()(
           s.tool = 'move';
         });
       },
+      addPants: (o) => {
+        const g = createPants(o);
+        const { sex, view } = get().doc.base;
+        g.transform = placeOnCroquis(g, sex, view);
+        get().checkpoint();
+        set((s) => {
+          s.doc.garments.push(g);
+          s.selectedId = g.id;
+          s.selectedText = null;
+          s.tool = 'move';
+        });
+      },
+      setPants: (id, patch) =>
+        step((d) => {
+          const g = findG(d, id);
+          if (!g || !g.pants) return;
+          Object.assign(g.pants, patch);
+          if (patch.block) {
+            const look = PANTS_LOOK[patch.block];
+            g.block = patch.block.toLowerCase();
+            g.fabric = look.fabric;
+            g.wash = look.wash;
+            g.fit = look.fit;
+            g.parts = { ...look.parts };
+          }
+          g.points = buildPantsPoints(g.pants, g.fit, g.rise, g.parts.hem);
+          g.name = pantsName(g.pants);
+        }),
+      addShoes: (o) => {
+        const g = createShoes(o);
+        get().checkpoint();
+        set((s) => {
+          s.doc.garments.push(g);
+          s.selectedId = g.id;
+          s.selectedText = null;
+          s.tool = 'move';
+        });
+      },
+      setShoes: (id, patch) =>
+        step((d) => {
+          const g = findG(d, id);
+          if (!g || !g.shoes) return;
+          Object.assign(g.shoes, patch);
+          g.name = shoeName(g.shoes);
+          g.block = g.shoes.kind;
+        }),
       setShortsLength: (id, length) =>
         step((d) => {
           const g = findG(d, id);
@@ -554,7 +865,9 @@ export const useStore = create<State>()(
       setHem: (id, hem) =>
         step((d) => {
           const g = findG(d, id);
-          if (g) g.parts.hem = hem;
+          if (!g) return;
+          g.parts.hem = hem;
+          if (g.pants) g.points = buildPantsPoints(g.pants, g.fit, g.rise, hem);
         }),
       setSkirt: (id, patch) =>
         step((d) => {
@@ -627,6 +940,10 @@ export const useStore = create<State>()(
           const g = findG(d, id);
           if (!g) return;
           g.fit = fit;
+          if (g.pants) {
+            g.points = buildPantsPoints(g.pants, fit, g.rise, g.parts.hem);
+            return;
+          }
           if (g.type === 'shorts' && g.shorts) {
             g.points = buildShortsPoints(fit, g.rise, g.shorts.inseam);
             return;
@@ -639,6 +956,10 @@ export const useStore = create<State>()(
           const g = findG(d, id);
           if (!g) return;
           g.rise = rise;
+          if (g.pants) {
+            g.points = buildPantsPoints(g.pants, g.fit, rise, g.parts.hem);
+            return;
+          }
           g.points = g.type === 'shorts' && g.shorts ? buildShortsPoints(g.fit, rise, g.shorts.inseam) : buildPoints(g.fit, rise);
         }),
       setWaist: (id, w) =>
@@ -654,7 +975,12 @@ export const useStore = create<State>()(
       setWash: (id, w) =>
         step((d) => {
           const g = findG(d, id);
-          if (g) g.wash = w;
+          if (!g) return;
+          g.wash = w;
+          delete g.colorHex;
+          delete g.colorName;
+          delete g.pantone;
+          syncColorway(d, g);
         }),
       setTextSize: (id, i, size) =>
         step((d) => {

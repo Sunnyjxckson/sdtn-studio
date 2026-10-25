@@ -26,6 +26,7 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
   const loose = o.block === 'Dress' ? 0 : o.block === 'Moto jacket' ? (o.fit === 'Oversized' ? 0.6 : 0.2) : o.fit === 'Oversized' ? 1 : o.fit === 'Regular' ? 0.5 : 0;
   const sleeved = sleeveOf(o) > 0;
   if (o.block === 'Dress') return dressFolds(r, o, hemV, bust);
+  if (o.block === 'Puffer') return pufferFolds(r, o, hemV);
 
   for (const s of [-1, 1] as const) {
     // pull from the underarm toward the bust or chest
@@ -67,7 +68,7 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
     // a long diagonal pull from the bust toward the far side of the hem, from the walking stride
     out.push({ pts: [T(-0.4, 0.42), T(0.05, 0.75), T(0.55, hemV - 0.05)], w: 4 + loose * 2, o: 0.14, ridge: true });
   }
-  if (o.block === 'Hoodie') {
+  if (o.block === 'Hoodie' || o.block === 'Sweatshirt' || o.block === 'Zip hoodie' || o.block === 'Bomber') {
     // the body blouses over the rib band, and the sleeves push up into stacked folds above the cuffs
     for (let k = 0; k < 6; k++) {
       const u = -0.85 + k * 0.34 + j(0.06);
@@ -93,6 +94,20 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
       out.push({ pts: [T(u - 0.05, 0.95), T(u + 0.02, 1.03), T(u, 1.1)], w: 3, o: 0.24, ridge: true });
     }
   }
+  return out;
+}
+
+/** Puffers do not drape: a few pinches where the fill is squeezed, at the elbows and above the hem. */
+function pufferFolds(r: () => number, o: TopOpts, hemV: number): Fold[] {
+  const out: Fold[] = [];
+  const j = (n: number) => (r() - 0.5) * n;
+  for (const s of [-1, 1] as const) {
+    const side = s < 0 ? 'armL' : 'armR';
+    for (const a0 of [0.98, 1.1]) out.push({ pts: [A(side, a0, -0.8), A(side, a0 + 0.05, 0.1), A(side, a0 - 0.02, 0.9)], w: 2.2, o: 0.3, ridge: a0 < 1.05 });
+    out.push({ pts: [T(s * 0.9, 0.34), T(s * 0.72, 0.4), T(s * 0.52, 0.42)], w: 2.4, o: 0.26, ridge: true });
+    out.push({ pts: [T(s * (0.8 + j(0.05)), hemV - 0.16), T(s * (0.6 + j(0.05)), hemV - 0.13), T(s * (0.4 + j(0.05)), hemV - 0.15)], w: 2.2, o: 0.24, ridge: false });
+  }
+  void o;
   return out;
 }
 

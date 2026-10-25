@@ -26,6 +26,7 @@ import { getGuides, onGuides, setGuides, snapPoint } from '../../vector/snap';
 import { toolById } from '../../vector/tools';
 import type { BoxHandle, Hit, PtrEvt, ToolCtx } from '../../vector/tools/types';
 import { setOverlayEl } from '../../vector/view';
+import { BoardsLayer, EnvelopeMesh } from './extra/OverlayExtras';
 
 const HANDLES: BoxHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const CURSORS: Record<BoxHandle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' };
@@ -429,10 +430,12 @@ export function VectorOverlay() {
       data-testid="vector-overlay"
     >
       <g ref={worldRef} transform={`translate(${view.x} ${view.y}) scale(${k})`}>
+        <BoardsLayer k={k} />
         <Grid v={v} k={k} />
         <HitLayer layers={v.layers} k={k} />
         {decor === 'box' && <BoxDecor k={k} />}
         {decor === 'nodes' && <NodeDecor k={k} />}
+        <EnvelopeMesh k={k} />
         <Guides k={k} />
         <g pointerEvents="none">{preview}</g>
       </g>

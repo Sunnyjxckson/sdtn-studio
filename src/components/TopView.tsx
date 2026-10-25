@@ -1,5 +1,7 @@
 import { memo } from 'react';
-import { WASHES, isDarkWash, type Garment } from '../model/garment';
+import { isDarkGarment, type Garment } from '../model/garment';
+import { garmentHex } from '../model/production';
+import { AllOverFill, GraphicsLayer } from './GraphicsLayer';
 import { smooth, type TorsoProfile, type Vec } from '../model/figure';
 import { sleeveOf, stiffOf, topForward, topShape, torsoPt, viewPoints } from '../model/top';
 import { BehindBody, OnBody, OverBody, type DetailCtx } from './TopDetails';
@@ -49,16 +51,17 @@ interface Props {
   /** Female croquis: shade under the bust. */
   bust: boolean;
   view: 'front' | 'back';
+  selectedGraphic?: string | null;
 }
 
 /** A top drawn straight onto the body. Everything here is in canvas space. */
-export const TopView = memo(function TopView({ g, t, rendered, shading, selectedText, bust, view }: Props) {
+export const TopView = memo(function TopView({ g, t, rendered, shading, selectedText, bust, view, selectedGraphic = null }: Props) {
   const stiff = stiffOf(g.top);
   const pts = viewPoints(g.points, g.top, view);
   const shape = topShape(t, pts, stiff, g.top);
   const body = smooth(shape.outline, true);
-  const base = WASHES[g.wash];
-  const dark = isDarkWash(g.wash);
+  const base = garmentHex(g);
+  const dark = isDarkGarment(g);
   const outline = rendered ? mix(base, '#000000', dark ? 0.55 : 0.45) : '#141414';
   const uid = g.id;
   const clip = `tclip-${uid}`;
@@ -123,6 +126,11 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
       <BehindBody c={dctx} />
       <g mask={holes.length ? `url(#tm-${uid})` : undefined}>
         <path d={body} fill={fill} stroke={outline} strokeWidth={rendered ? 0.9 : 1.5} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />
+        {g.allOver && (
+          <g clipPath={`url(#${clip})`}>
+            <AllOverFill g={g} d={[body]} k={0.8} uid={uid} />
+          </g>
+        )}
         {rendered && shading && (
           <g clipPath={`url(#${clip})`} pointerEvents="none">
             {/* light from the upper left: one soft shadow side, like marker shading */}
@@ -176,6 +184,7 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
         </g>
       ))}
       <g clipPath={`url(#${clip})`}>
+        <GraphicsLayer g={g} view={view} map={(x, y) => topForward(t, { x, y }, stiff)} k={0.8} selectedId={selectedGraphic} uid={uid} />
         {g.texts.map((x, i) => {
           const c = topForward(t, { x: x.x, y: x.y }, stiff);
           return (

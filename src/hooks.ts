@@ -1,27 +1,34 @@
 import { useEffect } from 'react';
-import { loadSaved, save } from './persist';
+import { bootProjects, refreshThumb, saveNow } from './projects';
 import { handleVectorKey } from './vector/commands';
-import { toolBrush, useStore, type DrawTool, type Tool } from './store';
+import { COLLECTION_TABS, toolBrush, useStore, type DrawTool, type Tool } from './store';
 
-/** Restore from IndexedDB once, then auto-save (debounced) on every document change. */
+/** Restore from IndexedDB once, then auto-save (debounced) on every change to the open project. */
 export function useAutosave() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let thumbTimer: ReturnType<typeof setTimeout> | undefined;
     let unsub: (() => void) | undefined;
     let cancelled = false;
-    loadSaved().then((saved) => {
+    bootProjects().then(() => {
       if (cancelled) return;
-      useStore.getState().hydrate(saved?.doc ?? null, saved?.selectedId ?? null);
       unsub = useStore.subscribe((s, prev) => {
-        if (s.doc === prev.doc && s.selectedId === prev.selectedId) return;
+        if (s.screen !== 'studio') return;
+        if (s.doc === prev.doc && s.project === prev.project && s.selectedId === prev.selectedId) return;
         clearTimeout(timer);
-        timer = setTimeout(() => void save(s.doc, s.selectedId), 400);
+        timer = setTimeout(() => void saveNow(), 400);
+        clearTimeout(thumbTimer);
+        thumbTimer = setTimeout(() => void refreshThumb(), 2500);
       });
     });
+    const flush = () => void saveNow();
+    window.addEventListener('pagehide', flush);
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      clearTimeout(thumbTimer);
       unsub?.();
+      window.removeEventListener('pagehide', flush);
     };
   }, []);
 }
@@ -48,6 +55,7 @@ export function useShortcuts() {
         st.redo();
         return;
       }
+      if (st.screen !== 'studio' || COLLECTION_TABS.includes(st.tab)) return;
       if (st.tab === 'vector') {
         handleVectorKey(e);
         return;

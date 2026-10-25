@@ -4,7 +4,8 @@ import { useStore } from '../../../store';
 import type { VectorDoc } from '../../../model/vector';
 import { runCommand } from '../../../vector/commands';
 import { vs } from '../../../vector/edit';
-import { exportPdf, exportPng, exportSvg } from '../../../vector/ops/io_export';
+import type { ExportOpts } from '../../../vector/ops/io_export';
+import { exportPdf, exportRaster, exportSvg, type RasterFormat } from '../../../vector/ops/io_export';
 import { lastCopiedSvg } from '../../../vector/ops/io_export';
 import { croquisToVector, garmentsToVector, placeSvg } from '../../../vector/ops/io_import';
 import { NumField, Section } from '../VectorPanels';
@@ -16,7 +17,8 @@ const looksSvg = (t: string) => /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)?(<!d
 export function FilePanel() {
   const v = useStore((s) => s.doc.vector);
   const [base, setBase] = useState(false);
-  const [full, setFull] = useState(false);
+  const [target, setTarget] = useState('bounds');
+  const [scale, setScale] = useState(2);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const file = useRef<HTMLInputElement>(null);
@@ -78,7 +80,15 @@ export function FilePanel() {
       setBusy(false);
     }
   };
-  const o = { base, full };
+  const boards = v.artboards;
+  const o: ExportOpts = {
+    base,
+    full: false,
+    boards: target === 'bounds' ? undefined : target === 'all' ? boards : boards.filter((b) => b.id === (target === 'active' ? v.activeBoard : target)),
+  };
+  const raster = (f: RasterFormat, label: string) => (
+    <button className="opt" disabled={busy} data-export={f} onClick={() => void guard(() => exportRaster(o, f, scale), `${label} saved`)}>{label}</button>
+  );
 
   return (
     <>
@@ -136,13 +146,32 @@ export function FilePanel() {
           <input type="checkbox" checked={base} onChange={(e) => setBase(e.target.checked)} />
           With croquis and garments
         </label>
-        <label className="small vcheck">
-          <input type="checkbox" checked={full} onChange={(e) => setFull(e.target.checked)} />
-          Full artboard
-        </label>
+        <div className="vrow2">
+          <label className="numfield">
+            <span className="muted small">Area</span>
+            <select className="hexin small" value={target} data-testid="export-target" onChange={(e) => setTarget(e.target.value)}>
+              <option value="bounds">Art bounds</option>
+              <option value="active">Active artboard</option>
+              <option value="all">All artboards</option>
+              {boards.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="numfield">
+            <span className="muted small">Scale</span>
+            <select className="hexin small" value={scale} data-testid="export-scale" onChange={(e) => setScale(Number(e.target.value))}>
+              <option value={1}>1x</option>
+              <option value={2}>2x</option>
+              <option value={4}>4x</option>
+            </select>
+          </label>
+        </div>
         <div className="opts">
           <button className="opt" disabled={busy} onClick={() => void guard(() => exportSvg(o), 'SVG saved')}>SVG</button>
-          <button className="opt" disabled={busy} onClick={() => void guard(() => exportPng(o), 'PNG saved')}>PNG</button>
+          {raster('png', 'PNG')}
+          {raster('jpeg', 'JPEG')}
+          {raster('webp', 'WebP')}
           <button className="opt" disabled={busy} onClick={() => void guard(() => exportPdf(o), 'PDF saved')}>PDF</button>
         </div>
         {msg && <p className="hint small muted" role="status">{msg}</p>}

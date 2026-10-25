@@ -3,13 +3,14 @@ import {
   garmentPaths,
   hemPaths,
   holeThreads,
-  isDarkWash,
+  isDarkGarment,
   ripPath,
-  WASHES,
   zig,
   type Garment,
 } from '../model/garment';
 import { mix } from '../model/color';
+import { garmentHex } from '../model/production';
+import { AllOverFill, GraphicsLayer } from './GraphicsLayer';
 import { drapeFolds, fadeSpots, foldStrokes, highlightStrokes, skirtFolds, whiskerStrokes } from '../model/shading';
 import { honeycomb, polyPath, ripFray, ripLoose, ripPoly, ripThreads, ripWarp, seamStitch, wornPatch } from '../model/rips';
 import { FabricDefs, fabricId, hasOverlay, overlayId, slubId } from './FabricDefs';
@@ -37,10 +38,13 @@ interface Props {
   bandInset?: [number, number];
   /** Suffix for defs ids when the same garment is drawn as more than one layer. */
   layer?: string;
+  /** Which side of the body faces the viewer, for placed graphics. */
+  view?: 'front' | 'back';
+  selectedGraphic?: string | null;
 }
 
 /** Renders one garment from data, in garment space, inside its own transform. */
-export const GarmentView = memo(function GarmentView({ g, selectedText, showCut, rendered, shading, sag = 0, edge, legOnly = false, dim = false, layer = '', bandInset }: Props) {
+export const GarmentView = memo(function GarmentView({ g, selectedText, showCut, rendered, shading, sag = 0, edge, legOnly = false, dim = false, layer = '', bandInset, view = 'front', selectedGraphic = null }: Props) {
   const paths = garmentPaths(g, sag, bandInset);
   const { body } = paths;
   const band = legOnly ? '' : paths.band;
@@ -50,8 +54,8 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
   const line = edge ?? body;
   const uid = g.id + layer;
   const dimTop = g.points.find((p) => p.key === 'crotch')?.y ?? 0;
-  const dark = isDarkWash(g.wash);
-  const base = WASHES[g.wash];
+  const dark = isDarkGarment(g);
+  const base = garmentHex(g);
   const t = g.transform;
   const cropH = g.cropY ?? 520;
   const shapeId = `shape-${uid}`;
@@ -61,7 +65,8 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
   const fill = rendered ? `url(#${fabricId(g)})` : base;
   const outline = rendered ? mix(base, '#000000', 0.62) : '#141414';
   const sw = rendered ? 1.1 : 1.6;
-  const thread = '#D8A640';
+  const tonal = !!g.pants;
+  const thread = tonal ? mix(base, dark ? '#ffffff' : '#000000', dark ? 0.36 : 0.3) : '#D8A640';
   const skirt = g.type === 'skirt';
   const hem = hemPaths(g);
   const sk = skirt ? skirtFolds(g) : null;
@@ -144,6 +149,7 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
               {band && <path d={band} fill={`url(#${slubId(g)})`} />}
             </g>
           )}
+          {g.allOver && <AllOverFill g={g} d={[body, band]} k={1} uid={uid} />}
           {rendered && hasOverlay(g) && (
             <g pointerEvents="none">
               <path d={body} fill={`url(#${overlayId(g)})`} />
@@ -234,10 +240,16 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
               </g>
             </g>
           )}
-          <path d={details} fill="none" stroke={rendered ? '#D9C48A' : dark ? '#C9CDD2' : '#5A5A5A'} strokeOpacity={rendered ? 0.8 : 1} strokeWidth={1.1} strokeLinecap="round" strokeDasharray="3 2" pointerEvents="none" />
-          <path d={solid} clipPath={g.type === "shorts" ? `url(#${shapeId})` : undefined} fill="none" stroke={rendered ? mix(base, '#000000', 0.65) : '#141414'} strokeWidth={rendered ? 1 : 1.3} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
+          <path d={details} clipPath={g.pants ? `url(#${shapeId})` : undefined} fill="none" stroke={rendered ? (tonal ? thread : '#D9C48A') : dark ? '#C9CDD2' : '#5A5A5A'} strokeOpacity={rendered ? 0.8 : 1} strokeWidth={1.1} strokeLinecap="round" strokeDasharray="3 2" pointerEvents="none" />
+          <path d={solid} clipPath={(g.type === "shorts" || !!g.pants) ? `url(#${shapeId})` : undefined} fill="none" stroke={rendered ? mix(base, '#000000', 0.65) : '#141414'} strokeWidth={rendered ? 1 : 1.3} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
+          {paths.crease && !legOnly && (
+            <g pointerEvents="none" fill="none" strokeLinecap="round" strokeLinejoin="round" clipPath={`url(#${shapeId})`}>
+              <path d={paths.crease} stroke={rendered ? '#000' : '#141414'} strokeOpacity={rendered ? 0.28 : 0.5} strokeWidth={0.8} transform="translate(1 0)" />
+              <path d={paths.crease} stroke="#fff" strokeOpacity={rendered ? 0.3 : 0} strokeWidth={1.3} />
+            </g>
+          )}
           {rendered && !legOnly && (
-            <g pointerEvents="none">
+            <g pointerEvents="none" clipPath={g.pants ? `url(#${shapeId})` : undefined}>
               {[
                 ...(g.type === 'shorts' ? [] : [{ d: solid, t: 'translate(0 2.2)' }]),
                 { d: paths.stitch, t: undefined },
@@ -250,7 +262,7 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
                 </g>
               ))}
               {paths.rivets.map((r, i) => (
-                <circle key={i} cx={r.x} cy={r.y} r={1.8} fill="#B07A45" stroke="#5C3A1E" strokeWidth={0.5} />
+                <circle key={i} cx={r.x} cy={r.y} r={1.8} fill={g.pants ? '#B9B5AB' : '#B07A45'} stroke={g.pants ? '#55524B' : '#5C3A1E'} strokeWidth={0.5} />
               ))}
               {paths.button && (
                 <>
@@ -331,6 +343,7 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
                 <path d={hem.cuffLine} fill="none" stroke={outline} strokeWidth={sw} strokeLinecap="round" />
                 <path d={hem.cuffLine} fill="none" stroke="#fff" strokeOpacity={rendered ? 0.22 : 0} strokeWidth={1.4} transform="translate(0 -1.2)" />
                 {rendered && <path d={hem.cuffStitch} fill="none" stroke={thread} strokeOpacity={0.8} strokeWidth={0.8} strokeDasharray="2.2 1.6" />}
+                {hem.rib && <path d={hem.rib} fill="none" stroke={outline} strokeOpacity={rendered ? 0.4 : 0.55} strokeWidth={0.55} />}
               </>
             )}
             {hem.fray && (
@@ -342,6 +355,7 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
           </g>
         )}
         <g clipPath={`url(#${shapeId})`}>
+          {!legOnly && <GraphicsLayer g={g} view={view} map={(x, y) => ({ x, y })} k={1} selectedId={selectedGraphic} uid={uid} />}
           {!legOnly && g.texts.map((x, i) => (
             <text
               key={`t${i}`}

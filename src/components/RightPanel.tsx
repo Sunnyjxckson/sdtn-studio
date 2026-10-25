@@ -20,12 +20,18 @@ import {
   WAIST_NAMES,
   WASHES,
   WASH_NAMES,
+  PANTS_BLOCKS,
+  PANTS_FABRICS,
+  PANTS_FIT_NAMES,
   type HoleSize,
+  type PantsBlock,
 } from '../model/garment';
+import { SHOE_LOOK, HEEL_KINDS, heelKindOf, soleOf, SHOE_KINDS, type ShoeKind } from '../model/shoes';
 import { Icon } from './icons';
-import { computeTopSpec, DRESS_LENS, DRESS_TOPS, dressLenOf, dressTopOf, NECKS, silhouetteOf, SILHOUETTES, TOP_BLOCKS, TOP_FITS, TOP_LENGTHS } from '../model/top';
+import { canTuck, hasNeckOption, isDress, SLEEVE_KINDS, sleeveKindOf, computeTopSpec, DRESS_LENS, DRESS_TOPS, dressLenOf, dressTopOf, NECKS, silhouetteOf, SILHOUETTES, TOP_BLOCKS, TOP_FITS, TOP_LENGTHS } from '../model/top';
 import { torsoProfile } from '../model/figure';
 import { TOP_FABRICS, type Garment } from '../model/garment';
+import { ColorwaysPanel, PaletteSwatches, ProductionGroups } from './ProductionPanels';
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -80,15 +86,18 @@ export function RightPanel() {
           <h2>No garment selected</h2>
           <p className="muted">Pick a block from the Library to put it on the body, or click a garment on the canvas.</p>
         </div>
+        <ColorwaysPanel />
       </aside>
     );
   }
   if (g.type === 'top') return <TopPanel g={g} />;
+  if (g.type === 'shoes') return <ShoePanel g={g} />;
   const spec = computeSpec(g);
   const p = g.points;
   const hemY = Math.max(findPoint(p, 'hemLo').y, findPoint(p, 'hemLi').y);
   const shorts = g.type === 'shorts';
   const skirt = g.type === 'skirt';
+  const pants = !!g.pants;
   const sliders = skirt
     ? [
         { m: 'inseam' as const, label: 'Length', v: Math.max(0, Math.max(findPoint(p, 'hemL').y, findPoint(p, 'hemR').y) - (findPoint(p, 'waistL').y - 14)) / PX_IN_V, min: 12, max: 46 },
@@ -160,9 +169,21 @@ export function RightPanel() {
         </Group>
       ) : (
         <Group label="FIT">
+          {pants && g.pants && (
+            <>
+              <Options names={PANTS_BLOCKS} value={g.pants.block} onPick={(n: PantsBlock) => a().setPants(g.id, { block: n })} />
+              {g.pants.block === 'Trouser' && (
+                <div className="opts">
+                  <button className={g.pants.pleats ? 'opt on' : 'opt'} onClick={() => a().setPants(g.id, { pleats: !g.pants!.pleats })}>
+                    Pleats
+                  </button>
+                </div>
+              )}
+            </>
+          )}
           {shorts && g.shorts && <Options names={SHORTS_LENGTH_NAMES} value={g.shorts.length} onPick={(n) => a().setShortsLength(g.id, n)} />}
           <div className="grid3">
-            {(shorts ? SHORTS_FIT_NAMES : FIT_NAMES).map((n) => (
+            {(shorts ? SHORTS_FIT_NAMES : pants ? PANTS_FIT_NAMES : FIT_NAMES).map((n) => (
               <button key={n} className={n === g.fit ? 'opt on' : 'opt'} onClick={() => a().setFit(g.id, n)}>
                 {n}
               </button>
@@ -195,7 +216,7 @@ export function RightPanel() {
 
       <Group label="FABRIC">
         <div className="grid3">
-          {FABRIC_NAMES.map((n) => (
+          {(pants ? PANTS_FABRICS : FABRIC_NAMES).map((n) => (
             <button key={n} className={n === g.fabric ? 'opt on' : 'opt'} onClick={() => a().setFabric(g.id, n)}>
               {n}
             </button>
@@ -214,7 +235,7 @@ export function RightPanel() {
       <Group label={skirt ? 'WAISTBAND' : 'DETAILS'}>
         <Options names={skirt ? SKIRT_WAIST_NAMES : shorts ? SHORTS_WAIST_NAMES : WAIST_NAMES} value={g.parts.waist} onPick={(n) => a().setWaist(g.id, n)} />
         {!skirt && <Options names={POCKET_NAMES} value={g.parts.pocket} onPick={(n) => a().setPocket(g.id, n)} />}
-        {shorts && <Options names={HEM_NAMES} value={g.parts.hem ?? 'Clean'} onPick={(n) => a().setHem(g.id, n)} />}
+        {(shorts || pants) && <Options names={HEM_NAMES} value={g.parts.hem ?? 'Clean'} onPick={(n) => a().setHem(g.id, n)} />}
       </Group>
 
       <Group label="COLOR">
@@ -230,7 +251,11 @@ export function RightPanel() {
             />
           ))}
         </div>
+        <PaletteSwatches g={g} />
       </Group>
+
+      <ColorwaysPanel />
+      <ProductionGroups g={g} />
 
       {g.cropY != null && (
         <button className="btn" onClick={() => a().clearCut(g.id)}>Remove cut line</button>
@@ -308,8 +333,16 @@ function TopPanel({ g }: { g: Garment }) {
         ) : (
           <Options names={TOP_LENGTHS} value={o.length} onPick={(n) => a().setTop(g.id, { length: n })} />
         )}
-        {o.block !== 'Hoodie' && o.block !== 'Moto jacket' && <Options names={NECKS} value={o.neck} onPick={(n) => a().setTop(g.id, { neck: n })} />}
-        {o.block !== 'Hoodie' && o.block !== 'Moto jacket' && o.block !== 'Dress' && (
+        {(o.block === 'Button-up' || o.block === 'Polo') && <Options names={SLEEVE_KINDS} value={sleeveKindOf(o)} onPick={(n) => a().setTop(g.id, { sleeve: n })} />}
+        {o.block === 'Puffer' && (
+          <div className="opts">
+            <button className={o.hood ? 'opt on' : 'opt'} onClick={() => a().setTop(g.id, { hood: !o.hood })}>
+              Hood
+            </button>
+          </div>
+        )}
+        {hasNeckOption(o) && <Options names={NECKS} value={o.neck} onPick={(n) => a().setTop(g.id, { neck: n })} />}
+        {canTuck(o) && !isDress(o) && (
           <div className="opts">
             <button className={o.tuck ? 'opt on' : 'opt'} onClick={() => a().setTop(g.id, { tuck: !o.tuck })}>
               Tucked in
@@ -333,7 +366,10 @@ function TopPanel({ g }: { g: Garment }) {
             <button key={n} className={n === g.wash ? 'wash on' : 'wash'} style={{ background: WASHES[n] }} aria-label={n} title={n} onClick={() => a().setWash(g.id, n)} />
           ))}
         </div>
+        <PaletteSwatches g={g} />
       </Group>
+      <ColorwaysPanel />
+      <ProductionGroups g={g} />
       <section className="group spec">
         <h3 className="label">SPEC FROM YOUR DRAWING</h3>
         <table data-testid="spec">
@@ -348,6 +384,68 @@ function TopPanel({ g }: { g: Garment }) {
         </table>
         <p className="hint">Sample size, measured against the croquis.</p>
       </section>
+    </aside>
+  );
+}
+
+function ShoePanel({ g }: { g: Garment }) {
+  const a = useStore.getState;
+  const o = g.shoes!;
+  return (
+    <aside className="panel right">
+      <div className="titlerow">
+        <span className="title">{g.name}</span>
+        <button className="iconbtn" aria-label="Delete garment" title="Delete garment" onClick={() => a().removeGarment(g.id)}>
+          <Icon name="trash" size={16} />
+        </button>
+      </div>
+      <Group label="STYLE">
+        <div className="grid2">
+          {SHOE_KINDS.map((n: ShoeKind) => (
+            <button
+              key={n}
+              className={n === o.kind ? 'opt on' : 'opt'}
+              onClick={() => {
+                a().setShoes(g.id, { kind: n });
+                const look = SHOE_LOOK[n];
+                a().setFabric(g.id, look.fabric);
+                a().setWash(g.id, look.wash);
+                a().setShoes(g.id, { sole: look.sole });
+              }}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        {o.kind === 'Heel' && <Options names={HEEL_KINDS} value={heelKindOf(o)} onPick={(n) => a().setShoes(g.id, { heel: n })} />}
+      </Group>
+      <Group label="UPPER COLOR">
+        <div className="washes">
+          {WASH_NAMES.map((n) => (
+            <button key={n} className={n === g.wash ? 'wash on' : 'wash'} style={{ background: WASHES[n] }} aria-label={n} title={n} onClick={() => a().setWash(g.id, n)} />
+          ))}
+        </div>
+        <PaletteSwatches g={g} />
+      </Group>
+      <Group label="SOLE COLOR">
+        <div className="washes">
+          {WASH_NAMES.map((n) => (
+            <button key={n} className={n === soleOf(o) ? 'wash on' : 'wash'} style={{ background: WASHES[n] }} aria-label={n} title={n} onClick={() => a().setShoes(g.id, { sole: n })} />
+          ))}
+        </div>
+      </Group>
+      <Group label="MATERIAL">
+        <div className="grid3">
+          {['Leather', 'Satin', 'Denim', 'Knit', 'Jersey'].map((n) => (
+            <button key={n} className={n === g.fabric ? 'opt on' : 'opt'} onClick={() => a().setFabric(g.id, n as Garment['fabric'])}>
+              {n}
+            </button>
+          ))}
+        </div>
+        <p className="hint">Shoes sit on the feet and follow the pose.</p>
+      </Group>
+      <ColorwaysPanel />
+      <ProductionGroups g={g} />
     </aside>
   );
 }

@@ -1,4 +1,6 @@
+import { lazy, Suspense } from 'react';
 import { Canvas } from './components/Canvas';
+import { Home } from './components/Home';
 import { CanvasBar } from './components/CanvasBar';
 import { LeftPanel } from './components/LeftPanel';
 import { RightPanel } from './components/RightPanel';
@@ -9,7 +11,9 @@ import { TopBar } from './components/TopBar';
 import { DrawOverlay } from './components/DrawOverlay';
 import { BrushPanel, DrawBar, DrawRightPanel, DrawToolStrip, SideSliders } from './components/DrawPanels';
 import { useAutosave, useShortcuts } from './hooks';
-import { useStore } from './store';
+import { COLLECTION_TABS, useStore } from './store';
+
+const Collection = lazy(() => import('./components/Collection'));
 import { VectorOverlay } from './components/vector/VectorOverlay';
 import { VectorBar, VectorLeftPanel, VectorRightPanel, VectorToolStrip } from './components/vector/VectorPanels';
 
@@ -18,8 +22,23 @@ export default function App() {
   useShortcuts();
   const ready = useStore((s) => s.ready);
   const tab = useStore((s) => s.tab);
+  const screen = useStore((s) => s.screen);
   const draw = tab === 'draw';
   const vec = tab === 'vector';
+  if (!ready) return <div className="loading mono muted">Loading</div>;
+  if (screen === 'home') return <Home />;
+  if (COLLECTION_TABS.includes(tab)) {
+    return (
+      <div className="app">
+        <TopBar />
+        <div className="collection">
+          <Suspense fallback={<div className="loading mono muted">Loading</div>}>
+            <Collection />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="app">
       <TopBar />

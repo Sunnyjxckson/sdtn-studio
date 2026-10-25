@@ -2,14 +2,16 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { torsoProfile } from '../model/figure';
 import { buildFlat, flatSheetSvg } from '../model/flats';
+import { money, rowTotal } from '../model/production';
 
 export function FlatsView() {
   const doc = useStore((s) => s.doc);
   const [busy, setBusy] = useState(false);
   const models = useMemo(() => {
     const t = torsoProfile(doc.base.sex, doc.base.pose);
-    return doc.garments.filter((g) => g.visible).map((g) => buildFlat(g, t));
-  }, [doc.garments, doc.base.sex, doc.base.pose]);
+    const cw = doc.colorways?.find((c) => c.id === doc.activeColorway)?.name;
+    return doc.garments.filter((g) => g.visible).map((g) => buildFlat(g, t, cw));
+  }, [doc.garments, doc.base.sex, doc.base.pose, doc.colorways, doc.activeColorway]);
 
   const svg = async () => {
     const { exportFlatsSvg } = await import('../flatsExport');
@@ -87,6 +89,67 @@ export function FlatsView() {
                         </tr>
                       ))}
                     </tbody>
+                  </table>
+                  <h4 className="label">CONSTRUCTION</h4>
+                  <table data-testid="flat-construction">
+                    <tbody>
+                      {m.construction.map((r) => (
+                        <tr key={r.k}>
+                          <td>{r.k}</td>
+                          <td className="mono">{r.v}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {m.graphics.length > 0 && (
+                    <>
+                      <h4 className="label">GRAPHICS</h4>
+                      <table data-testid="flat-graphics">
+                        <tbody>
+                          {m.graphics.map((r) => (
+                            <tr key={r.id}>
+                              <td>
+                                {r.n}. {r.name}
+                                <span className="muted small"> {r.side}, {r.method}</span>
+                              </td>
+                              <td className="mono">
+                                {r.w} x {r.h} in
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                  <h4 className="label">BILL OF MATERIALS</h4>
+                  <table className="flatbom" data-testid="flat-bom">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th className="r">Qty</th>
+                        <th className="r">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {m.bom.map((r) => (
+                        <tr key={r.key}>
+                          <td>
+                            <b>{r.item}</b>
+                            <span className="muted small"> {r.detail}</span>
+                          </td>
+                          <td className="r mono">
+                            {r.qty} {r.unit}
+                          </td>
+                          <td className="r mono">{r.cost != null ? money(rowTotal(r)) : ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2}>Total per unit</td>
+                        <td className="r mono">{money(m.bomTotal)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                   <h4 className="label">NOTES</h4>
                   <ul className="flatnotes small muted">

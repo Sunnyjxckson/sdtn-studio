@@ -35,12 +35,41 @@ function label(a: Pt, b: Pt, k: number, ppi: number, withAngle: boolean) {
 
 // ---------- Dimension ----------
 
+function makeDim(g: { ax: number; ay: number; bx: number; by: number; mode?: VDim['mode']; vx?: number; vy?: number }): VDim {
+  const style = defaultStyle();
+  style.fill = null;
+  style.stroke = { kind: 'solid', color: RED };
+  style.width = 0.8;
+  const names = { angular: 'Angle', radius: 'Radius', diameter: 'Diameter', linear: 'Dimension' };
+  const dim: VDim = {
+    kind: 'dim',
+    id: newId(),
+    name: names[g.mode ?? 'linear'],
+    ax: g.ax,
+    ay: g.ay,
+    bx: g.bx,
+    by: g.by,
+    off: OFFSET,
+    ppi: useMeasureOpts.getState().ppi,
+    style,
+  };
+  if (g.mode) dim.mode = g.mode;
+  if (g.vx !== undefined) {
+    dim.vx = g.vx;
+    dim.vy = g.vy;
+  }
+  return dim;
+}
+
 let start: Pt | null = null;
+/** Clicks collected for an angular dimension: vertex, then the two arms. */
+let angPts: Pt[] = [];
 /** Dragging the offset of a selected dimension. */
 let offDrag: { id: string; started: boolean } | null = null;
 
 const end = (ctx: ToolCtx) => {
   start = null;
+  angPts = [];
   offDrag = null;
   ctx?.setPreview(null);
   setGuides([]);
@@ -61,7 +90,7 @@ export const dimensionTool: VToolDef = {
   title: 'Dimension',
   key: 'shift+d',
   icon: 'M3,6 V14 M17,6 V14 M3,10 H17 M3,10 L6,8 M3,10 L6,12 M17,10 L14,8 M17,10 L14,12',
-  help: 'Drag from one point to another to add a measured line. Shift for 45 degree steps. Drag the label of a selected dimension to move its offset.',
+  help: 'Pick a mode in the bar. Linear, radius and diameter: drag between two points (radius and diameter go from the center to the rim). Angular: click the vertex, then each arm. Shift for 45 degree steps.',
   group: 'measure',
   cursor: 'crosshair',
   down(e, _hit, ctx) {
@@ -70,9 +99,34 @@ export const dimensionTool: VToolDef = {
       offDrag = { id: d.id, started: false };
       return;
     }
+    if (useMeasureOpts.getState().dimMode === 'angular') {
+      angPts.push({ x: e.x, y: e.y });
+      if (angPts.length === 3) {
+        const [v, a, b] = angPts;
+        angPts = [];
+        ctx.setPreview(null);
+        if (Math.hypot(a.x - v.x, a.y - v.y) * ctx.k < 4 || Math.hypot(b.x - v.x, b.y - v.y) * ctx.k < 4) return;
+        addItems([makeDim({ ax: a.x, ay: a.y, bx: b.x, by: b.y, mode: 'angular', vx: v.x, vy: v.y })]);
+      }
+      return;
+    }
     start = { x: e.x, y: e.y };
   },
   move(e, ctx) {
+    if (!offDrag && angPts.length) {
+      const R = RED, k = ctx.k;
+      const pts = [...angPts, { x: e.x, y: e.y }];
+      const v = pts[0];
+      ctx.setPreview(
+        h(
+          'g',
+          null,
+          ...pts.slice(1).map((p, i) => h('path', { key: i, d: `M${v.x},${v.y} L${p.x},${p.y}`, stroke: R, strokeWidth: 1.2 / k, fill: 'none', strokeDasharray: `${4 / k} ${3 / k}` })),
+          ...pts.map((p, i) => h('circle', { key: 'c' + i, cx: p.x, cy: p.y, r: 3 / k, fill: R })),
+        ),
+      );
+      return;
+    }
     if (offDrag) {
       const id = offDrag.id;
       if (!offDrag.started) {
@@ -92,7 +146,15 @@ export const dimensionTool: VToolDef = {
     }
     if (!start) return;
     const b = endPoint(start, e);
-    ctx.setPreview(label(start, b, ctx.k, useMeasureOpts.getState().ppi, false).node);
+    const mode = useMeasureOpts.getState().dimMode;
+    const ppi = useMeasureOpts.getState().ppi;
+    const r = label(start, b, ctx.k, ppi, false);
+    if (mode === 'linear') ctx.setPreview(r.node);
+    else {
+      const len = Math.hypot(b.x - start.x, b.y - start.y) / ppi;
+      const txt = mode === 'radius' ? `R ${fmtIn(len)}` : `\u00D8 ${fmtIn(len * 2)}`;
+      ctx.setPreview(h('g', null, r.node, h('text', { x: b.x + 10 / ctx.k, y: b.y + 14 / ctx.k, fontSize: 11 / ctx.k, fill: RED, fontFamily: 'IBM Plex Mono, monospace' }, txt)));
+    }
   },
   up(e, ctx) {
     if (offDrag) {
@@ -103,23 +165,8 @@ export const dimensionTool: VToolDef = {
     const a = start, b = endPoint(start, e);
     end(ctx);
     if (Math.hypot(b.x - a.x, b.y - a.y) * ctx.k < 4) return;
-    const style = defaultStyle();
-    style.fill = null;
-    style.stroke = { kind: 'solid', color: RED };
-    style.width = 0.8;
-    const dim: VDim = {
-      kind: 'dim',
-      id: newId(),
-      name: 'Dimension',
-      ax: a.x,
-      ay: a.y,
-      bx: b.x,
-      by: b.y,
-      off: OFFSET,
-      ppi: useMeasureOpts.getState().ppi,
-      style,
-    };
-    addItems([dim]);
+    const mode = useMeasureOpts.getState().dimMode;
+    addItems([makeDim({ ax: a.x, ay: a.y, bx: b.x, by: b.y, mode: mode === 'linear' ? undefined : mode })]);
   },
   cancel: end,
   options: () => h(DimOpts),

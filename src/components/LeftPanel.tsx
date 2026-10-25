@@ -3,7 +3,8 @@ import { useStore } from '../store';
 import type { TopOpts } from '../model/top';
 import { SKINS } from '../model/croquis';
 import { POSES } from '../model/figure';
-import { FIT_NAMES, SHORTS_LENGTH_NAMES, SKIRT_SHAPE_NAMES, type Fit, type ShortsLength, type SkirtShape } from '../model/garment';
+import { FIT_NAMES, SHORTS_LENGTH_NAMES, SKIRT_SHAPE_NAMES, type Fit, type PantsOpts, type ShortsLength, type SkirtShape } from '../model/garment';
+import type { ShoeOpts } from '../model/shoes';
 import { Icon } from './icons';
 
 const PANT_ICONS: Record<Fit | 'Jeans', string> = {
@@ -83,9 +84,18 @@ const TOP_ITEMS: { name: string; o: TopOpts; icon: string }[] = [
   { name: 'Long sleeve', o: { block: 'Long sleeve', fit: 'Fitted', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M14,8 Q20,12 26,8 L32,12 L36,44 L32,45 L27,20 L27,46 L13,46 L13,20 L8,45 L4,44 L8,12 Z' },
 ];
 
+const SHIRT_ITEMS: typeof TOP_ITEMS = [
+  { name: 'Button-up', o: { block: 'Button-up', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false, sleeve: 'Long' }, icon: 'M14,6 L20,12 L26,6 L33,11 L36,43 L31,44 L28,20 L28,46 L12,46 L12,20 L9,44 L4,43 L7,11 Z M20,12 V46 M16,4 L20,12 L24,4' },
+  { name: 'Camp shirt', o: { block: 'Button-up', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false, sleeve: 'Short' }, icon: 'M14,7 L20,13 L26,7 L34,12 L31,22 L27,20 L28,46 L12,46 L13,20 L9,22 L6,12 Z M20,13 V46 M16,5 L20,13 L24,5' },
+  { name: 'Polo', o: { block: 'Polo', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false, sleeve: 'Short' }, icon: 'M15,6 L20,12 L25,6 L33,12 L31,22 L27,20 L28,44 L12,44 L13,20 L9,22 L7,12 Z M20,12 V23 M17,5 L20,12 L23,5' },
+  { name: 'Sweatshirt', o: { block: 'Sweatshirt', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M14,7 Q20,11 26,7 L33,12 L36,42 L31,43 L28,22 L29,44 L11,44 L12,22 L9,43 L4,42 L7,12 Z M11,40 H29 M5,40 L9,39' },
+  { name: 'Oversized sweat', o: { block: 'Sweatshirt', fit: 'Oversized', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M13,7 Q20,11 27,7 L37,14 L38,46 L32,47 L29,26 L31,48 L9,48 L11,26 L8,47 L2,46 L3,14 Z M9,44 H31' },
+];
+
 const HOODIE_ITEMS: typeof TOP_ITEMS = [
   { name: 'Hoodie', o: { block: 'Hoodie', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M15,6 Q20,2 25,6 L33,12 L36,44 L31,45 L28,22 L29,42 L11,42 L12,22 L9,45 L4,44 L7,12 Z M16,28 H24 L26,38 H14 Z' },
   { name: 'Oversized hoodie', o: { block: 'Hoodie', fit: 'Oversized', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M14,6 Q20,1 26,6 L36,13 L38,46 L32,47 L29,26 L31,46 L9,46 L11,26 L8,47 L2,46 L4,13 Z M15,30 H25 L28,42 H12 Z' },
+  { name: 'Zip hoodie', o: { block: 'Zip hoodie', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M15,6 Q20,2 25,6 L33,12 L36,44 L31,45 L28,22 L29,42 L11,42 L12,22 L9,45 L4,44 L7,12 Z M20,6 V42' },
   { name: 'Cropped hoodie', o: { block: 'Hoodie', fit: 'Fitted', length: 'Waist', neck: 'Crew', tuck: false }, icon: 'M15,6 Q20,2 25,6 L33,12 L36,40 L31,41 L28,20 L28,34 L12,34 L12,20 L9,41 L4,40 L7,12 Z' },
 ];
 
@@ -93,6 +103,33 @@ const OUTER_ITEMS: typeof TOP_ITEMS = [
   { name: 'Moto jacket', o: { block: 'Moto jacket', fit: 'Fitted', length: 'Waist', neck: 'V', tuck: false }, icon: 'M13,7 L18,6 L20,16 L22,6 L27,7 L33,12 L36,44 L31,45 L28,20 L28,38 L12,38 L12,20 L9,45 L4,44 L7,12 Z M20,16 L16,38' },
   { name: 'Long moto', o: { block: 'Moto jacket', fit: 'Regular', length: 'Hip', neck: 'V', tuck: false }, icon: 'M13,7 L18,6 L20,16 L22,6 L27,7 L33,12 L36,44 L31,45 L28,20 L28,44 L12,44 L12,20 L9,45 L4,44 L7,12 Z M20,16 L16,44' },
   { name: 'Oversized moto', o: { block: 'Moto jacket', fit: 'Oversized', length: 'Hip', neck: 'V', tuck: false }, icon: 'M12,7 L18,6 L20,16 L22,6 L28,7 L37,13 L39,46 L33,47 L30,24 L31,44 L9,44 L10,24 L7,47 L1,46 L3,13 Z M20,16 L15,44' },
+];
+
+const MORE_OUTER_ITEMS: typeof TOP_ITEMS = [
+  { name: 'Bomber', o: { block: 'Bomber', fit: 'Regular', length: 'Waist', neck: 'Crew', tuck: false }, icon: 'M14,6 Q20,3 26,6 L33,12 L36,40 L31,41 L28,20 L28,36 L12,36 L12,20 L9,41 L4,40 L7,12 Z M20,5 V36 M12,36 V40 H28 V36' },
+  { name: 'Trucker', o: { block: 'Trucker', fit: 'Regular', length: 'Waist', neck: 'Crew', tuck: false }, icon: 'M14,6 L20,10 L26,6 L33,12 L36,40 L31,41 L28,20 L28,36 L12,36 L12,20 L9,41 L4,40 L7,12 Z M20,10 V36 M13,16 H18 V21 H13 Z M22,16 H27 V21 H22 Z' },
+  { name: 'Puffer', o: { block: 'Puffer', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false }, icon: 'M14,6 Q20,3 26,6 L34,12 L37,44 L31,45 L28,22 L29,42 L11,42 L12,22 L9,45 L3,44 L6,12 Z M11,18 H29 M11,25 H29 M11,32 H29' },
+  { name: 'Hooded puffer', o: { block: 'Puffer', fit: 'Regular', length: 'Hip', neck: 'Crew', tuck: false, hood: true }, icon: 'M14,7 Q20,0 26,7 L34,12 L37,44 L31,45 L28,22 L29,42 L11,42 L12,22 L9,45 L3,44 L6,12 Z M11,20 H29 M11,27 H29 M11,34 H29' },
+  { name: 'Trench', o: { block: 'Trench', fit: 'Regular', length: 'Long', neck: 'V', tuck: false }, icon: 'M14,5 L20,20 L26,5 L33,10 L36,40 L31,41 L28,20 L30,54 L10,54 L12,20 L9,41 L4,40 L7,10 Z M11,28 H29 M17,22 V30 M23,22 V30' },
+  { name: 'Blazer', o: { block: 'Blazer', fit: 'Fitted', length: 'Hip', neck: 'V', tuck: false }, icon: 'M14,5 L20,24 L26,5 L33,11 L36,44 L31,45 L28,20 L28,42 L12,42 L12,20 L9,45 L4,44 L7,11 Z M17,10 L20,24 L23,10 M20,24 V30' },
+];
+
+const PANTS_ITEMS: { name: string; o: PantsOpts; icon: string }[] = [
+  { name: 'Cargo', o: { block: 'Cargo' }, icon: 'M7,4 H33 L35,52 H22 L20,18 L18,52 H5 Z M9,24 H15 V32 H9 Z M25,24 H31 V32 H25 Z' },
+  { name: 'Joggers', o: { block: 'Jogger' }, icon: 'M8,4 H32 L31,38 L28,52 H22 L20,16 L18,52 H12 L9,38 Z M12,47 H18 M22,47 H28' },
+  { name: 'Trousers', o: { block: 'Trouser' }, icon: 'M9,4 H31 L31,52 H22 L20,16 L18,52 H9 Z M14,16 V50 M26,16 V50' },
+  { name: 'Pleated', o: { block: 'Trouser', pleats: true }, icon: 'M8,4 H32 L32,52 H22 L20,16 L18,52 H8 Z M13,5 V14 M16,5 V12 M27,5 V14 M24,5 V12' },
+  { name: 'Leggings', o: { block: 'Legging' }, icon: 'M11,4 H29 L28,52 H22 L20,16 L18,52 H12 Z' },
+];
+
+const SHOE_ITEMS: { name: string; o: ShoeOpts; icon: string }[] = [
+  { name: 'Sneaker', o: { kind: 'Sneaker' }, icon: 'M3,32 L3,43 H37 L38,39 Q38,35 30,34 L21,27 L14,29 L9,22 L5,22 Z M5,40 H36 M16,29 L20,32 M12,26 L17,30' },
+  { name: 'High top', o: { kind: 'High top' }, icon: 'M5,10 H15 L16,26 L22,29 L30,33 Q37,35 37,40 L37,44 H3 L3,32 L5,28 Z M5,41 H36 M6,14 H15 M6,19 H15 M6,24 H15' },
+  { name: 'Combat boot', o: { kind: 'Combat boot' }, icon: 'M6,6 H17 L18,26 L23,29 L31,32 Q38,34 38,40 L38,46 H4 L4,32 L6,28 Z M4,42 H37 M7,10 H17 M7,15 H17 M7,20 H17 M7,25 H17' },
+  { name: 'Chelsea', o: { kind: 'Chelsea boot' }, icon: 'M6,14 H17 L18,28 L23,30 L31,33 Q38,35 38,40 L38,44 H4 L4,34 L6,30 Z M9,18 L9,30 M14,18 L14,30 M4,41 H37' },
+  { name: 'Loafer', o: { kind: 'Loafer' }, icon: 'M3,34 L3,43 H37 L38,40 Q38,36 30,35 L20,30 L12,32 L7,30 Z M3,40 H37 M14,33 L22,32 M16,34 H20' },
+  { name: 'Stiletto', o: { kind: 'Heel', heel: 'Stiletto' }, icon: 'M4,18 L9,18 Q11,32 24,36 L37,38 L37,41 L26,42 L10,41 L8,52 H5 L6,34 Z' },
+  { name: 'Block heel', o: { kind: 'Heel', heel: 'Block' }, icon: 'M4,18 L10,18 Q12,32 24,36 L37,38 L37,41 L28,42 L28,52 H18 L16,43 L8,42 Z' },
 ];
 
 const DRESS_ITEMS: typeof TOP_ITEMS = [
@@ -109,7 +146,9 @@ function LibraryPanel() {
   const addTop = useStore((s) => s.addTop);
   const addShorts = useStore((s) => s.addShorts);
   const addSkirt = useStore((s) => s.addSkirt);
-  const [cat, setCat] = useState<'Tops' | 'Outerwear' | 'Bottoms' | 'Dresses'>('Bottoms');
+  const addPants = useStore((s) => s.addPants);
+  const addShoes = useStore((s) => s.addShoes);
+  const [cat, setCat] = useState<'Tops' | 'Outerwear' | 'Bottoms' | 'Dresses' | 'Shoes'>('Bottoms');
   const items: { name: string; fit: Fit; icon: string }[] = [
     { name: 'Jeans', fit: 'Straight', icon: PANT_ICONS.Jeans },
     ...FIT_NAMES.map((f) => ({ name: f, fit: f, icon: PANT_ICONS[f] })),
@@ -118,18 +157,11 @@ function LibraryPanel() {
     <section className="group">
       <h3 className="label">LIBRARY</h3>
       <div className="chips">
-        {(['Tops', 'Outerwear', 'Bottoms', 'Dresses', 'Shoes'] as const).map((c) => {
-          const live = c !== 'Shoes';
-          return live ? (
-            <button key={c} className={c === cat ? 'chip on' : 'chip'} onClick={() => setCat(c)}>
-              {c}
-            </button>
-          ) : (
-            <span key={c} className="chip off" title="Coming later">
-              {c}
-            </span>
-          );
-        })}
+        {(['Tops', 'Outerwear', 'Bottoms', 'Dresses', 'Shoes'] as const).map((c) => (
+          <button key={c} className={c === cat ? 'chip on' : 'chip'} onClick={() => setCat(c)}>
+            {c}
+          </button>
+        ))}
       </div>
       {cat === 'Bottoms' ? (
         <>
@@ -155,6 +187,17 @@ function LibraryPanel() {
               </button>
             ))}
           </div>
+          <p className="hint sub">Pants</p>
+          <div className="grid3">
+            {PANTS_ITEMS.map((it) => (
+              <button key={it.name} className="block" title={`Add ${it.name.toLowerCase()}`} onClick={() => addPants({ ...it.o })}>
+                <svg width="40" height="56" viewBox="0 0 42 56" aria-hidden="true">
+                  <path d={it.icon} fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" />
+                </svg>
+                <span>{it.name}</span>
+              </button>
+            ))}
+          </div>
           <p className="hint sub">Skirts</p>
           <div className="grid3">
             {SKIRT_SHAPE_NAMES.map((n) => (
@@ -167,9 +210,20 @@ function LibraryPanel() {
             ))}
           </div>
         </>
+      ) : cat === 'Shoes' ? (
+        <div className="grid3">
+          {SHOE_ITEMS.map((it) => (
+            <button key={it.name} className="block" title={`Add ${it.name.toLowerCase()}`} onClick={() => addShoes({ ...it.o })}>
+              <svg width="40" height="56" viewBox="0 0 40 56" aria-hidden="true">
+                <path d={it.icon} fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" />
+              </svg>
+              <span>{it.name}</span>
+            </button>
+          ))}
+        </div>
       ) : (
         <div className="grid3">
-          {(cat === 'Tops' ? [...TOP_ITEMS, ...HOODIE_ITEMS] : cat === 'Outerwear' ? OUTER_ITEMS : DRESS_ITEMS).map((it) => (
+          {(cat === 'Tops' ? [...TOP_ITEMS, ...SHIRT_ITEMS, ...HOODIE_ITEMS] : cat === 'Outerwear' ? [...OUTER_ITEMS, ...MORE_OUTER_ITEMS] : DRESS_ITEMS).map((it) => (
             <button key={it.name} className="block" title={`Add ${it.name.toLowerCase()}`} onClick={() => addTop({ ...it.o })}>
               <svg width="40" height="56" viewBox="0 0 40 56" aria-hidden="true">
                 <path d={it.icon} fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" />

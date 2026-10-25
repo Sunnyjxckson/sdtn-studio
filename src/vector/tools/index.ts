@@ -1,5 +1,7 @@
 // Every vector tool, in tool strip order.
 import { anchorTools } from './anchors';
+import { artboardTool } from './artboard';
+import { envelopeTool } from './envelope';
 import { blendTools } from './blend';
 import { cutTools } from './cut';
 import { measureTools } from './measure';
@@ -28,6 +30,8 @@ const all: VToolDef[] = [
   ...blendTools,
   ...paintTools,
   ...measureTools,
+  envelopeTool,
+  artboardTool,
   ...viewTools,
 ];
 

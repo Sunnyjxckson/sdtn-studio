@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { WASHES, type Garment } from '../model/garment';
+import { isDarkWash, type Garment } from '../model/garment';
+import { garmentHex } from '../model/production';
 import { mix } from '../model/color';
 
 export const fabricId = (g: Garment) => `fab-${g.id}`;
@@ -7,7 +8,7 @@ export const overlayId = (g: Garment) => `ovl-${g.id}`;
 export const slubId = (g: Garment) => `slub-${g.id}`;
 
 /** Which kinds get a gradient overlay on top of the pattern. */
-export const hasOverlay = (g: Garment) => g.fabric === 'Denim' || g.fabric === 'Leather' || g.fabric === 'Satin';
+export const hasOverlay = (g: Garment) => g.fabric === 'Denim' || g.fabric === 'Leather' || g.fabric === 'Satin' || g.fabric === 'Nylon';
 
 function Tile({ g, w, h, children }: { g: Garment; w: number; h: number; children: ReactNode }) {
   return (
@@ -19,7 +20,7 @@ function Tile({ g, w, h, children }: { g: Garment; w: number; h: number; childre
 
 /** SVG <pattern> and overlay gradient for the garment's fabric. Colours come from the wash. */
 export function FabricDefs({ g }: { g: Garment }) {
-  const base = WASHES[g.wash];
+  const base = garmentHex(g);
   const light = mix(base, '#ffffff', 0.4);
   const dark = mix(base, '#000000', 0.45);
   // from the points themselves, so a garment drawn as two layers gets the same gradient in both
@@ -105,7 +106,7 @@ export function FabricDefs({ g }: { g: Garment }) {
     case 'Leather':
       tile = (
         <Tile g={g} w={9} h={9}>
-          <rect width={9} height={9} fill={mix(base, '#000000', 0.55)} />
+          <rect width={9} height={9} fill={mix(base, '#000000', isDarkWash(g.wash) ? 0.55 : 0.1)} />
           <path d="M1,2 q2,-1 4,0 M5,7 q2,-1 3,0 M0,5 q1,-1 2,0" stroke="#fff" strokeOpacity={0.07} strokeWidth={0.7} fill="none" />
         </Tile>
       );
@@ -134,6 +135,42 @@ export function FabricDefs({ g }: { g: Garment }) {
           <stop offset={0.6} stopColor="#fff" stopOpacity={0.34} />
           <stop offset={0.8} stopColor="#000" stopOpacity={0.18} />
           <stop offset={1} stopColor="#fff" stopOpacity={0.15} />
+        </linearGradient>
+      );
+      break;
+    case 'Poplin':
+      tile = (
+        <Tile g={g} w={3} h={3}>
+          <rect width={3} height={3} fill={base} />
+          <path d="M0.5,0 V3" stroke={dark} strokeOpacity={0.045} strokeWidth={0.4} />
+          <path d="M0,0.5 H3" stroke={light} strokeOpacity={0.08} strokeWidth={0.4} />
+        </Tile>
+      );
+      break;
+    case 'Twill':
+      tile = (
+        <Tile g={g} w={3} h={3}>
+          <rect width={3} height={3} fill={base} />
+          <path d="M-0.5,3.5 L3.5,-0.5" stroke={light} strokeOpacity={0.14} strokeWidth={0.5} />
+          <path d="M-0.5,2 L2,-0.5 M1,3.5 L3.5,1" stroke={dark} strokeOpacity={0.13} strokeWidth={0.4} />
+        </Tile>
+      );
+      break;
+    case 'Nylon':
+      tile = (
+        <Tile g={g} w={3} h={3}>
+          <rect width={3} height={3} fill={base} />
+          <path d="M0,0.5 H3 M0.5,0 V3" stroke={dark} strokeOpacity={0.06} strokeWidth={0.3} />
+        </Tile>
+      );
+      overlay = (
+        <linearGradient id={overlayId(g)} gradientUnits="userSpaceOnUse" x1={70} y1={top} x2={240} y2={top + span * 0.5}>
+          <stop offset={0} stopColor="#fff" stopOpacity={0} />
+          <stop offset={0.18} stopColor="#fff" stopOpacity={0.2} />
+          <stop offset={0.3} stopColor="#fff" stopOpacity={0.02} />
+          <stop offset={0.5} stopColor="#000" stopOpacity={0.1} />
+          <stop offset={0.7} stopColor="#fff" stopOpacity={0.14} />
+          <stop offset={1} stopColor="#000" stopOpacity={0.06} />
         </linearGradient>
       );
       break;

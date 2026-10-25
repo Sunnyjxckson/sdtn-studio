@@ -919,3 +919,63 @@ export function poseInverse(rig: PoseRigOut, p: Vec): Vec {
   }
   return matApply(matInv(rig.regions[0].m), p);
 }
+
+// ---------- feet, for shoes ----------
+export interface FootFrame {
+  /** Screen left is 0. */
+  index: 0 | 1;
+  knee: Vec;
+  ankle: Vec;
+  toe: Vec;
+  /** Half width of the foot at the ball, canvas units. */
+  halfW: number;
+  /** The shin: bone and body widths either side, for boot shafts. */
+  shin: BoneProf;
+}
+export interface Feet {
+  frames: [FootFrame, FootFrame];
+  /** Leg indices, back to front. */
+  order: (0 | 1)[];
+}
+
+const STOCK_FEET: Pick<FootFrame, 'toe' | 'halfW'>[] = [
+  { toe: P(321, 964), halfW: 17 },
+  { toe: P(332, 862), halfW: 12 },
+];
+const feetCache = new Map<string, Feet>();
+
+/** Ankle, toe and shin of each leg in the posed canvas, and which leg is behind. */
+export function feetOf(sex: Sex, pose: PoseId): Feet {
+  const key = `${sex}:${pose}`;
+  const hit = feetCache.get(key);
+  if (hit) return hit;
+  const prof = bodyProfile(sex, pose);
+  let out: Feet;
+  if (usesStock(sex, pose)) {
+    const frames = [0, 1].map((s) => ({
+      index: s as 0 | 1,
+      knee: STOCK_WALK.legs[s][1],
+      ankle: STOCK_WALK.legs[s][2],
+      toe: STOCK_FEET[s].toe,
+      halfW: STOCK_FEET[s].halfW,
+      shin: prof.legs[s][1],
+    })) as [FootFrame, FootFrame];
+    out = { frames, order: [1, 0] };
+  } else {
+    const r = buildRig(sex, pose);
+    const fp = r.b.foot;
+    const hw = fp.slice(0, 2).reduce((a, e) => a + (e[1] + e[2]) / 2, 0) / 2;
+    const frames = [0, 1].map((s) => ({
+      index: s as 0 | 1,
+      knee: r.leg[s][1],
+      ankle: r.leg[s][2],
+      toe: r.leg[s][3],
+      halfW: hw,
+      shin: prof.legs[s][1],
+    })) as [FootFrame, FootFrame];
+    const order = r.pose.order.filter((p) => p === 'legL' || p === 'legR').map((p) => (p === 'legL' ? 0 : 1)) as (0 | 1)[];
+    out = { frames, order };
+  }
+  feetCache.set(key, out);
+  return out;
+}

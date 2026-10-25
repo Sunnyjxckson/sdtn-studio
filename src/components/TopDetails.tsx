@@ -1,135 +1,10 @@
 import type { ReactNode } from 'react';
-import { smooth, type TorsoProfile, type Vec } from '../model/figure';
-import type { Garment } from '../model/garment';
+import { smooth, type Vec } from '../model/figure';
 import { mix } from '../model/color';
-import { cuffedOf, dressHemV, dressTopOf, silhouetteOf, sleeveOf, topForward, torsoPt, uv, type TopShape } from '../model/top';
-
-/** Everything the block specific drawing needs, in canvas space. */
-export interface DetailCtx {
-  g: Garment;
-  t: TorsoProfile;
-  shape: TopShape;
-  stiff: number;
-  rendered: boolean;
-  view: 'front' | 'back';
-  base: string;
-  dark: boolean;
-  /** Fabric fill (pattern in rendered mode). */
-  fill: string;
-  /** Body outline colour. */
-  outline: string;
-  hemV: number;
-}
-
-const f1 = (n: number) => n.toFixed(1);
-const line = (pts: Vec[], closed = false) => (pts.length ? 'M' + pts.map((p) => `${f1(p.x)},${f1(p.y)}`).join(' L') + (closed ? ' Z' : '') : '');
-
-function helpers(c: DetailCtx) {
-  const F = (u: number, v: number): Vec => topForward(c.t, torsoPt(u, v), c.stiff);
-  /** A point sitting h canvas units above the shoulder line at u. */
-  const U = (u: number, h: number): Vec => {
-    const p = F(u, 0);
-    return { x: p.x, y: p.y - h };
-  };
-  const A = (s: -1 | 1, a: number, o: number): Vec => topForward(c.t, { x: a * 100, y: 100 + o * 100, r: s < 0 ? 'armL' : 'armR' }, c.stiff);
-  const ink = c.dark ? mix(c.base, '#ffffff', 0.5) : c.rendered ? c.outline : '#141414';
-  const metal = c.dark ? '#cfcfd2' : '#7a7a7a';
-  return { F, U, A, ink, metal };
-}
-
-/** Body hem as a polyline: the longest hem run. */
-function bodyHem(shape: TopShape): Vec[] {
-  return shape.hems.reduce<Vec[]>((best, h) => (h.length > best.length ? h : best), []);
-}
-
-/** Band running up from the hem, as a closed polygon wider than the body (the body clip trims it). */
-function hemBand(shape: TopShape, h: number): { poly: Vec[]; top: Vec[]; hem: Vec[] } {
-  const hem = bodyHem(shape);
-  if (hem.length < 2) return { poly: [], top: [], hem: [] };
-  const first = hem[0], last = hem[hem.length - 1];
-  const ext = [{ x: first.x - 3, y: first.y }, ...hem, { x: last.x + 3, y: last.y }];
-  const top = ext.map((p) => ({ x: p.x, y: p.y - h }));
-  return { poly: [...ext, ...[...top].reverse()], top, hem: ext };
-}
-
-const ribLines = (top: Vec[], hem: Vec[], step: number): string => {
-  let d = '';
-  for (let i = 0; i < hem.length; i += 1) {
-    if (i % step) continue;
-    d += `M${f1(top[i].x)},${f1(top[i].y)} L${f1(hem[i].x)},${f1(hem[i].y)} `;
-  }
-  return d;
-};
-
-/** Zipper: dashed teeth along a path with a pull at the start. */
-function Zip({ pts, c, pull = true, w = 2 }: { pts: Vec[]; c: DetailCtx; pull?: boolean; w?: number }) {
-  const { ink, metal } = helpers(c);
-  if (pts.length < 2) return null;
-  const a = pts[0], b = pts[1];
-  const ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
-  return (
-    <g fill="none" strokeLinecap="round" pointerEvents="none">
-      <path d={smooth(pts)} stroke={ink} strokeWidth={w + 1.2} opacity={0.55} />
-      <path d={smooth(pts)} stroke={c.rendered ? metal : ink} strokeWidth={w} strokeDasharray="0.9 1.1" />
-      {pull && (
-        <g transform={`translate(${f1(a.x)} ${f1(a.y)}) rotate(${f1(ang)})`}>
-          <path d="M-1,-1.6 L-6,-2.6 L-6,2.6 L-1,1.6 Z" fill={c.rendered ? metal : c.fill} stroke={ink} strokeWidth={0.6} />
-          <circle cx={-6.8} cy={0} r={1.1} fill="none" stroke={ink} strokeWidth={0.6} />
-        </g>
-      )}
-    </g>
-  );
-}
-
-/** Stitch line (dashed) in the detail colour. */
-const Stitch = ({ d, c, o = 0.7, w = 0.6 }: { d: string; c: DetailCtx; o?: number; w?: number }) => {
-  const { ink } = helpers(c);
-  return <path d={d} fill="none" stroke={ink} strokeWidth={w} strokeDasharray="1.8 1.4" opacity={o} pointerEvents="none" />;
-};
-
-function RibBand({ poly, top, hem, c, id }: { poly: Vec[]; top: Vec[]; hem: Vec[]; c: DetailCtx; id: string }) {
-  const { ink } = helpers(c);
-  const trim = c.rendered ? mix(c.base, c.dark ? '#ffffff' : '#000000', c.dark ? 0.1 : 0.07) : c.fill;
-  return (
-    <g pointerEvents="none">
-      <path d={line(poly, true)} fill={trim} />
-      <path d={ribLines(top, hem, 1)} stroke={ink} strokeWidth={0.5} opacity={c.rendered ? 0.35 : 0.5} fill="none" />
-      <path d={line(top)} fill="none" stroke={c.outline} strokeWidth={0.9} opacity={0.9} />
-      <path d={line(hem)} fill="none" stroke={c.outline} strokeWidth={0.9} opacity={0.9} />
-      <title>{id}</title>
-    </g>
-  );
-}
-
-/** Rib cuff on a sleeve: polygon in arm space with rib lines running along the arm. */
-function Cuff({ c, s, a0, a1, o0, o1 }: { c: DetailCtx; s: -1 | 1; a0: number; a1: number; o0: number; o1: number }) {
-  const { A, ink } = helpers(c);
-  const trim = c.rendered ? mix(c.base, c.dark ? '#ffffff' : '#000000', c.dark ? 0.1 : 0.07) : c.fill;
-  const edge = (a: number) => o0 + ((o1 - o0) * (a - a0)) / (a1 - a0 || 1);
-  const n = 6;
-  const L: Vec[] = [], R: Vec[] = [];
-  for (let i = 0; i <= n; i++) {
-    const a = a0 + ((a1 - a0) * i) / n;
-    L.push(A(s, a, -edge(a)));
-    R.push(A(s, a, edge(a)));
-  }
-  const poly = [...L, ...[...R].reverse()];
-  let ribs = '';
-  for (let k = 1; k < 8; k++) {
-    const o = -1 + (2 * k) / 8;
-    const p0 = A(s, a0, o * edge(a0)), p1 = A(s, a1, o * edge(a1));
-    ribs += `M${f1(p0.x)},${f1(p0.y)} L${f1(p1.x)},${f1(p1.y)} `;
-  }
-  return (
-    <g pointerEvents="none">
-      <path d={smooth(poly, true)} fill={trim} />
-      <path d={ribs} stroke={ink} strokeWidth={0.5} opacity={c.rendered ? 0.35 : 0.5} fill="none" />
-      <path d={`M${f1(L[0].x)},${f1(L[0].y)} L${f1(R[0].x)},${f1(R[0].y)}`} stroke={c.outline} strokeWidth={0.9} fill="none" />
-    </g>
-  );
-}
-
-const sleeveEdge = (a1: number, cuffO: number) => (a: number) => 1.04 + ((cuffO - 1.04) * (a - 0.1)) / (a1 - 0.1);
+import { cuffedOf, dressHemV, dressTopOf, isHoodie, silhouetteOf, sleeveOf, uv } from '../model/top';
+import { moreFront } from './TopDetailsMore';
+import { bodyHem, Cuff, f1, helpers, hemBand, line, RibBand, sleeveEdge, Stitch, Zip, type DetailCtx } from './topParts';
+export type { DetailCtx } from './topParts';
 
 // ---------- hoodie ----------
 
@@ -160,6 +35,8 @@ function hoodieFront(c: DetailCtx): ReactNode {
   const o = c.g.top!;
   const hemV = c.hemV;
   const out: ReactNode[] = [];
+  const puff = o.block === 'Puffer';
+  const zipHood = o.block === 'Zip hoodie';
   const bandH = o.fit === 'Oversized' ? 13 : 11;
   const band = hemBand(c.shape, bandH);
   const shade = mix(c.base, '#000000', 0.55);
@@ -185,7 +62,7 @@ function hoodieFront(c: DetailCtx): ReactNode {
         <path d={smooth([U(-0.58, 14), U(-0.34, 28), U(-0.08, 38)])} fill="none" stroke={c.outline} strokeWidth={0.7} opacity={0.55} strokeLinecap="round" />
       </g>,
     );
-  } else {
+  } else if (!puff) {
     // rim of the hood round the front of the neck, and the drawcords
     const nf = c.g.points.find((p) => p.key === 'neckF');
     const v0 = nf ? uv(nf).v : 0.1;
@@ -208,8 +85,27 @@ function hoodieFront(c: DetailCtx): ReactNode {
     );
   }
 
+  // zip hoodie: a zip down the front and slanted side pockets instead of the kangaroo pocket
+  if (c.view === 'front' && zipHood) {
+    const z = [F(0, 0.0), F(0, 0.5), F(0, hemV - 0.1)];
+    out.push(
+      <g key="zip" pointerEvents="none">
+        <path d={smooth(z.map((p) => ({ x: p.x + 6, y: p.y })))} fill="none" stroke={c.outline} strokeWidth={0.8} opacity={0.5} />
+        <Zip pts={z} c={c} />
+      </g>,
+    );
+    for (const s of [-1, 1] as const) {
+      const p = [F(s * 0.46, hemV - 0.4), F(s * 0.56, hemV - 0.3), F(s * 0.63, hemV - 0.19)];
+      out.push(
+        <g key={`sp${s}`} pointerEvents="none">
+          <path d={smooth(p)} fill="none" stroke={c.outline} strokeWidth={1} opacity={0.85} strokeLinecap="round" />
+          <Stitch d={smooth(p.map((q) => ({ x: q.x + s * 2.6, y: q.y })))} c={c} o={0.45} />
+        </g>,
+      );
+    }
+  }
   // body: rib hem band, kangaroo pocket
-  if (c.view === 'front') {
+  if (c.view === 'front' && !zipHood && !puff) {
     const vt = hemV - 0.5, vb = hemV - 0.1;
     const pw = (v: number) => 0.46 + ((v - vt) / (vb - vt)) * 0.2;
     const ptsTop: Vec[] = [];
@@ -227,7 +123,7 @@ function hoodieFront(c: DetailCtx): ReactNode {
       </g>,
     );
   }
-  if (band.poly.length)
+  if (band.poly.length && !puff)
     out.push(
       <g key="band" clipPath={`url(#tclip-${c.g.id})`}>
         <RibBand {...band} c={c} id="hem" />
@@ -235,7 +131,7 @@ function hoodieFront(c: DetailCtx): ReactNode {
     );
   // sleeve cuffs
   const cuffO = cuffedOf(o);
-  if (cuffO != null) {
+  if (cuffO != null && !puff) {
     const len = sleeveOf(o) + (o.fit === 'Oversized' ? 0.2 : o.fit === 'Regular' ? 0.07 : 0.02);
     const edge = sleeveEdge(len, cuffO);
     for (const s of [-1, 1] as const) out.push(<Cuff key={`cf${s}`} c={c} s={s} a0={len - 0.27} a1={len} o0={edge(len - 0.27)} o1={cuffO} />);
@@ -461,20 +357,23 @@ function dressOver(c: DetailCtx): ReactNode {
 
 /** Drawn first, behind the body (the hood lying behind the neck). */
 export function BehindBody({ c }: { c: DetailCtx }) {
-  return c.g.top?.block === 'Hoodie' ? <>{hoodieBehind(c)}</> : null;
+  return isHoodie(c.g.top) ? <>{hoodieBehind(c)}</> : null;
 }
 
 /** Drawn on the body, under the holes mask. */
 export function OnBody({ c }: { c: DetailCtx }) {
   switch (c.g.top?.block) {
     case 'Hoodie':
+    case 'Zip hoodie':
       return <>{hoodieFront(c)}</>;
+    case 'Puffer':
+      return <>{c.g.top?.hood ? hoodieFront(c) : null}{moreFront(c)}</>;
     case 'Moto jacket':
       return <>{motoFront(c)}</>;
     case 'Dress':
       return <>{dressFront(c)}</>;
     default:
-      return null;
+      return <>{moreFront(c)}</>;
   }
 }
 

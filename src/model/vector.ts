@@ -38,7 +38,27 @@ export type VJoin = 'miter' | 'round' | 'bevel';
 export type VBlend = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-burn' | 'color-dodge' | 'difference';
 export const VBLENDS: VBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-burn', 'color-dodge', 'difference'];
 
+/** Live effects, drawn as SVG filters. */
+export interface VShadow {
+  on: boolean;
+  dx: number;
+  dy: number;
+  blur: number;
+  color: string;
+  /** Opacity, 0 to 1. */
+  a: number;
+}
+export interface VGlow {
+  on: boolean;
+  blur: number;
+  color: string;
+  a: number;
+}
+
 export interface VStyle {
+  /** Drop shadow and outer glow. */
+  shadow?: VShadow;
+  glow?: VGlow;
   fill: VPaint | null;
   stroke: VPaint | null;
   width: number;
@@ -92,6 +112,19 @@ export interface VDim extends Base {
   /** Canvas units per inch. */
   ppi: number;
   style: VStyle;
+  /** Linear when missing. Angular uses the vertex vx, vy with arms to a and b. Radius and diameter measure from the center a to the rim point b. */
+  mode?: 'linear' | 'angular' | 'radius' | 'diameter';
+  vx?: number;
+  vy?: number;
+}
+
+export interface VArtboard {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export type VRepeat =
@@ -131,7 +164,12 @@ export interface VectorDoc {
   smartGuides: boolean;
   /** Saved swatch colors. */
   swatches: string[];
+  /** Pages for export, like Illustrator artboards. */
+  artboards: VArtboard[];
+  activeBoard: string;
 }
+
+export const DEFAULT_BOARD: VArtboard = { id: 'board-1', name: 'Artboard 1', x: 0, y: 20, w: 600, h: 980 };
 
 export const LAYER_COLORS = ['#4F8DF7', '#E5484D', '#30A46C', '#F5A524', '#8E4EC6', '#12A594', '#E54D9E'];
 
@@ -157,6 +195,8 @@ export const emptyVector = (): VectorDoc => ({
   snap: true,
   smartGuides: true,
   swatches: [...DEFAULT_SWATCHES],
+  artboards: [{ ...DEFAULT_BOARD }],
+  activeBoard: DEFAULT_BOARD.id,
 });
 
 export const defaultStyle = (): VStyle => ({
@@ -173,8 +213,13 @@ export const defaultStyle = (): VStyle => ({
 
 export function normalizeVector(v: Partial<VectorDoc> | undefined): VectorDoc {
   const e = emptyVector();
-  if (!v || !Array.isArray(v.layers) || v.layers.length === 0) return { ...e, ...(v ?? {}), layers: e.layers };
-  return { ...e, ...v, layers: v.layers.map((l, i) => ({ ...newLayer(i + 1), ...l, items: Array.isArray(l.items) ? l.items : [] })) };
+  const fixBoards = (d: VectorDoc): VectorDoc => {
+    if (!Array.isArray(d.artboards) || d.artboards.length === 0) d = { ...d, artboards: e.artboards, activeBoard: e.activeBoard };
+    if (!d.artboards.some((b) => b.id === d.activeBoard)) d = { ...d, activeBoard: d.artboards[0].id };
+    return d;
+  };
+  if (!v || !Array.isArray(v.layers) || v.layers.length === 0) return fixBoards({ ...e, ...(v ?? {}), layers: e.layers });
+  return fixBoards({ ...e, ...v, layers: v.layers.map((l, i) => ({ ...newLayer(i + 1), ...l, items: Array.isArray(l.items) ? l.items : [] })) });
 }
 
 // ---------- node and path builders ----------
@@ -399,7 +444,9 @@ export function itemBox(it: VItem, withRepeat = true): Box | null {
   if (it.kind === 'text') return ptsBox(textCorners(it));
   if (it.kind === 'dim') {
     const g = dimGeom(it);
-    return ptsBox([{ x: it.ax, y: it.ay }, { x: it.bx, y: it.by }, g.a, g.b]);
+    const pts = [{ x: it.ax, y: it.ay }, { x: it.bx, y: it.by }, g.a, g.b];
+    if (it.vx !== undefined && it.vy !== undefined) pts.push({ x: it.vx, y: it.vy });
+    return ptsBox(pts);
   }
   let b: Box | null = null;
   const kids = it.clip && it.children.length ? [it.children[0]] : it.children;
@@ -453,6 +500,10 @@ export function transformItem(it: VItem, m: Mat): void {
     const a = apply(m, it.ax, it.ay), b = apply(m, it.bx, it.by);
     const det = m[0] * m[3] - m[1] * m[2];
     it.ax = r3(a.x); it.ay = r3(a.y); it.bx = r3(b.x); it.by = r3(b.y);
+    if (it.vx !== undefined && it.vy !== undefined) {
+      const v = apply(m, it.vx, it.vy);
+      it.vx = r3(v.x); it.vy = r3(v.y);
+    }
     if (det < 0) it.off = -it.off;
     return;
   }
