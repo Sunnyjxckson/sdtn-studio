@@ -106,6 +106,7 @@ function cropPoints(points: Pt[], cropY: number | null, chainOf: (i: number) => 
 }
 
 export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: number): Fitted {
+  if (g.type === 'skirt') return fitSkirt(g, rig, body, sag);
   const points = g.points;
   const t = g.transform;
   const at = (k: string) => points.findIndex((p) => p.key === k);
@@ -299,4 +300,176 @@ export function fitGarment(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: 
   }
 
   return { g: fitted, index, layers, bandInset };
+}
+
+// ---------- skirts ----------
+// A skirt hangs from the hips across both legs. The sides follow the outer line of each leg (and
+// stay outside it), the hem is one curve between the two side corners, so a forward leg lifts that
+// side of the hem and the cloth drapes over it instead of splitting into legs.
+
+type SChain = 'waist' | 'outR' | 'hem' | 'outL';
+
+function fitSkirt(g: Garment, rig: PoseRigOut, body: BodyProfile, sag: number): Fitted {
+  const points = g.points;
+  const t = g.transform;
+  const at = (k: string) => points.findIndex((p) => p.key === k);
+  const iWL = at('waistL'), iWR = at('waistR'), iHR = at('hemR'), iHL = at('hemL');
+  if (rig.identity || iWL !== 0 || [iWR, iHR, iHL].some((i) => i < 0) || !(iWR < iHR && iHR < iHL)) {
+    return { g, index: points.map((_, i) => i), layers: null, bandInset: [0, 0] };
+  }
+  const n = points.length;
+  const segChain: SChain[] = new Array(n).fill('outL');
+  const marks: [number, SChain][] = [[iWL, 'waist'], [iWR, 'outR'], [iHR, 'hem'], [iHL, 'outL']];
+  let cur: SChain = 'outL';
+  for (let i = 0; i < n; i++) {
+    const m = marks.find((x) => x[0] === i);
+    if (m) cur = m[1];
+    segChain[i] = cur;
+  }
+  const pointChain = (i: number): SChain => (i === iWL || i === iHL ? 'outL' : i === iWR || i === iHR ? 'outR' : segChain[i]);
+  const src = cropPoints(points, g.cropY, (i) => {
+    const c = pointChain(i);
+    return c === 'hem' ? 'hemL' : c;
+  });
+
+  // densify: the waist and hem get even steps, the sides get steps along their length
+  const pts: { p: Pt; chain: SChain }[] = [];
+  const index: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = src[i], b = src[(i + 1) % n];
+    index.push(pts.length);
+    pts.push({ p: a, chain: pointChain(i) });
+    const c = segChain[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const k = c === 'waist' ? 10 : c === 'hem' ? 14 : Math.floor(len / STEP);
+    for (let j = 1; j < k; j++) {
+      const u = j / k;
+      const y = a.y + (b.y - a.y) * u + (c === 'waist' ? sag * 4 * u * (1 - u) : 0);
+      pts.push({ p: { x: a.x + (b.x - a.x) * u, y }, chain: c });
+    }
+  }
+
+  const toCanvas = (p: Vec) => ({ x: t.x + p.x * t.scale, y: t.y + p.y * t.scale });
+  const toGarment = (q: Vec) => ({ x: (q.x - t.x) / t.scale, y: (q.y - t.y) / t.scale });
+  const regionOf = (q: Vec) => rig.regions.find((r) => q.x >= r.rect.x0 && q.x < r.rect.x1 && q.y >= r.rect.y0 && q.y < r.rect.y1);
+
+  const hipEase = (key: string, side: 'l' | 'r') => {
+    const hp = points.find((p) => p.key === key);
+    if (!hp) return EASE.hip;
+    const w = poseWarp(rig, toCanvas(hp));
+    const h = hipAt(body, w.y);
+    if (!h) return EASE.hip;
+    const e = side === 'l' ? h.l - w.x : w.x - h.r;
+    return Math.max(EASE.hip, Math.min(16, e));
+  };
+  const easeL = hipEase('hipL', 'l'), easeR = hipEase('hipR', 'r');
+
+  // cloth falls straight down from the hips instead of following the shin: pencil follows the legs more
+  const L = g.skirt?.shape === 'Pencil' ? 0.35 : 1;
+  const hang = (w: Vec, s: number, inShin: boolean): Vec => {
+    const [thigh, shin] = body.legs[s];
+    if (!thigh || !shin) return w;
+    const xAt = (a: Vec, b: Vec, y: number) => a.x + ((y - a.y) / (b.y - a.y || 1)) * (b.x - a.x);
+    const knee = thigh.b;
+    if (!inShin) {
+      const k = Math.max(0, Math.min(1, (w.y - thigh.a.y) / (knee.y - thigh.a.y || 1)));
+      return { x: w.x + (thigh.a.x - xAt(thigh.a, knee, w.y)) * 0.35 * L * k, y: w.y };
+    }
+    const thighOff = (thigh.a.x - knee.x) * 0.35 * L;
+    return { x: w.x + thighOff + (knee.x - xAt(knee, shin.b, w.y)) * 0.65 * L, y: w.y };
+  };
+  const warp = (q: Vec): Vec => {
+    const w = poseWarp(rig, q);
+    const r0 = regionOf(q);
+    return r0 && !r0.id.startsWith('p') ? hang(w, r0.id.endsWith('L') ? 0 : 1, r0.id.startsWith('s')) : w;
+  };
+
+  const placed = pts.map(({ p, chain }) => {
+    const q = toCanvas(p);
+    let w = warp(q);
+    if (chain === 'outL' || chain === 'outR') {
+      const r = regionOf(q);
+      if (r && (r.id === 'pL' || r.id === 'pR')) {
+        const h = hipAt(body, w.y);
+        if (h) w = chain === 'outL' ? { x: Math.min(w.x, h.l - easeL), y: w.y } : { x: Math.max(w.x, h.r + easeR), y: w.y };
+      } else if (r) {
+        const s = r.id.endsWith('L') ? 0 : 1;
+        const bone = body.legs[s][r.id.startsWith('t') ? 0 : 1];
+        if (bone) w = pushFromBone(bone, w, chain === 'outL' ? 'left' : 'right');
+      }
+    }
+    return { ...p, ...toGarment(w) };
+  });
+
+  // cloth hangs level more than the legs do: pull the two hem corners part of the way toward each other
+  {
+    const flat = g.skirt?.shape === 'Pencil' ? 0.5 : 0.7;
+    const cR = placed[index[iHR]].y, cL = placed[index[iHL]].y;
+    const avg = (cR + cL) / 2;
+    const run = (from: number, to: number, corner: number) => {
+      const top = placed[index[iWL]].y;
+      const shift = (avg - corner) * flat;
+      for (let i = from; i <= to; i++) {
+        const w = Math.max(0, Math.min(1, (placed[i].y - top) / (corner - top || 1)));
+        placed[i] = { ...placed[i], y: placed[i].y + shift * w };
+      }
+    };
+    run(index[iWR], index[iHR], cR);
+    run(index[iHL], placed.length - 1, cL);
+  }
+
+  // soften the side lines so the push from the legs does not leave kinks
+  const smoothRun = (from: number, to: number) => {
+    for (let pass = 0; pass < 3; pass++) {
+      const prev = placed.map((p) => ({ x: p.x, y: p.y }));
+      for (let i = from + 1; i < to; i++) {
+        placed[i] = { ...placed[i], x: (prev[i - 1].x + prev[i].x * 2 + prev[i + 1].x) / 4, y: (prev[i - 1].y + prev[i].y * 2 + prev[i + 1].y) / 4 };
+      }
+    }
+  };
+  smoothRun(index[iWR], index[iHR]);
+  smoothRun(index[iHL], placed.length - 1);
+
+  // waist edge between the fitted corners, with the curve
+  const wl = placed[index[iWL]], wr = placed[index[iWR]];
+  for (let i = index[iWL] + 1, j = 1; i < index[iWR]; i++, j++) {
+    const u = j / (index[iWR] - index[iWL]);
+    placed[i] = { ...placed[i], x: wl.x + (wr.x - wl.x) * u, y: wl.y + (wr.y - wl.y) * u + sag * 4 * u * (1 - u) };
+  }
+  // hem: one curve between the corners, a little lower in the middle; pleats scallop it
+  {
+    const a = placed[index[iHR]], b = placed[index[iHL]];
+    const span = index[iHL] - index[iHR];
+    const dip = Math.hypot(b.x - a.x, b.y - a.y) * 0.05;
+    const wave = g.skirt?.shape === 'Pleated' ? 2.2 : 0;
+    for (let i = index[iHR] + 1, j = 1; i < index[iHL]; i++, j++) {
+      const u = j / span;
+      placed[i] = {
+        ...placed[i],
+        x: a.x + (b.x - a.x) * u,
+        y: a.y + (b.y - a.y) * u + dip * 4 * u * (1 - u) + wave * Math.sin(u * Math.PI * 24) * 0.5,
+      };
+    }
+  }
+
+  const bandInset: [number, number] = [0, 0];
+  {
+    const yW = toCanvas(wl).y, yT = yW - 14 * t.scale;
+    const hW = hipAt(body, yW), hT = hipAt(body, yT);
+    if (hW && hT) {
+      bandInset[0] = Math.max(0, Math.min(10, (hT.l - hW.l) / t.scale));
+      bandInset[1] = Math.max(0, Math.min(10, (hW.r - hT.r) / t.scale));
+    }
+  }
+
+  const warpPt = <T extends { x: number; y: number }>(o: T): T => ({ ...o, ...toGarment(warp(toCanvas(o))) });
+  const fitted: Garment = {
+    ...g,
+    points: placed,
+    holes: g.holes.map(warpPt),
+    distress: g.distress.map(warpPt),
+    texts: g.texts.map(warpPt),
+    cropY: null,
+  };
+  return { g: fitted, index, layers: null, bandInset };
 }

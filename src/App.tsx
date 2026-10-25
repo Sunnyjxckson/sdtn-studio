@@ -4,6 +4,7 @@ import { LeftPanel } from './components/LeftPanel';
 import { RightPanel } from './components/RightPanel';
 import { ToolStrip } from './components/ToolStrip';
 import { PatternView } from './components/PatternView';
+import { FlatsView } from './components/FlatsView';
 import { TopBar } from './components/TopBar';
 import { DrawOverlay } from './components/DrawOverlay';
 import { BrushPanel, DrawBar, DrawRightPanel, DrawToolStrip, SideSliders } from './components/DrawPanels';
@@ -27,6 +28,8 @@ export default function App() {
         <div className="center">
           {tab === 'pattern' ? (
             <PatternView />
+          ) : tab === 'flats' ? (
+            <FlatsView />
           ) : (
             <>
               {draw ? <DrawToolStrip /> : vec ? <VectorToolStrip /> : <ToolStrip />}
@@ -36,7 +39,7 @@ export default function App() {
                   {ready ? (
                     <>
                       <Canvas />
-                      {tab !== 'flats' && <DrawOverlay interactive={draw} />}
+                      <DrawOverlay interactive={draw} />
                       {draw && <SideSliders />}
                       {vec && <VectorOverlay />}
                     </>

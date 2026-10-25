@@ -808,6 +808,34 @@ export interface TorsoProfile {
   arms: [ArmProf, ArmProf];
   /** Rough body measurements in inches, for the top spec. */
   inches: { chest: number; shoulder: number; torso: number; arm: number };
+  /** Mean ankle height, and the outer edge of both legs together at a canvas y (for dresses). */
+  ankleY: number;
+  span: (y: number) => [number, number];
+}
+
+function profAt(tab: [number, number][], t: number): number {
+  if (!tab.length) return 0;
+  if (t <= tab[0][0]) return tab[0][1];
+  for (let i = 0; i < tab.length - 1; i++) if (t <= tab[i + 1][0]) return tab[i][1] + ((t - tab[i][0]) / (tab[i + 1][0] - tab[i][0] || 1)) * (tab[i + 1][1] - tab[i][1]);
+  return tab[tab.length - 1][1];
+}
+
+/** Outer edge of both legs together at canvas y, from the body profile. */
+function legSpan(prof: BodyProfile, y: number): [number, number] {
+  let l = Infinity, r = -Infinity;
+  for (const leg of prof.legs) {
+    const bone = y <= leg[0].b.y ? leg[0] : leg[1];
+    const t = Math.max(0, Math.min(1, (y - bone.a.y) / (bone.b.y - bone.a.y || 1)));
+    const cx = bone.a.x + (bone.b.x - bone.a.x) * t;
+    l = Math.min(l, cx - profAt(bone.left, t));
+    r = Math.max(r, cx + profAt(bone.right, t));
+  }
+  return [l, r];
+}
+
+function legsInfo(sex: Sex, pose: PoseId): Pick<TorsoProfile, 'ankleY' | 'span'> {
+  const prof = bodyProfile(sex, pose);
+  return { ankleY: (prof.legs[0][1].b.y + prof.legs[1][1].b.y) / 2, span: (y) => legSpan(prof, y) };
 }
 
 const STOCK_HALF: [number, number][] = [[0, 17.5], [0.5, 16.5], [1, 14], [1.5, 12.5], [2, 9.5]];
@@ -831,6 +859,8 @@ const STOCK_TORSO: TorsoProfile = {
     { bones: [P(372, 215), P(382, 345), P(398, 468)], half: STOCK_HALF },
   ],
   inches: { chest: 34, shoulder: 15, torso: 16, arm: 23 },
+  ankleY: 837,
+  span: (y) => legSpan(STOCK_PROFILE, y),
 };
 
 const torsoCache = new Map<string, TorsoProfile>();
@@ -862,6 +892,7 @@ export function torsoProfile(sex: Sex, pose: PoseId): TorsoProfile {
     hipY: torsoPt(r, P(0, 430)).y,
     arms: [0, 1].map((s) => ({ bones: [r.arm[s][0], r.arm[s][1], r.arm[s][2]] as [Vec, Vec, Vec], half: half(s) })) as [ArmProf, ArmProf],
     inches: male ? { chest: 38, shoulder: 17.5, torso: 18, arm: 25 } : { chest: 34, shoulder: 15, torso: 16, arm: 23 },
+    ...legsInfo(sex, pose),
   };
   torsoCache.set(key, out);
   return out;

@@ -143,3 +143,7 @@ North star (3D):
 - [ ] Which garment blocks come first after jeans, tee and moto jacket
 - [ ] Is it only for Sedition at first, or open to other designers from day one
 - [ ] Tech pack format: match a specific factory's template, or a general one
+
+## Shorts and skirts
+
+Shorts reuse the jeans outline cut at a length (Micro, Short, Mid-thigh, Knee, Jorts) with hem options Clean, Cuffed and Raw, and shorts pattern pieces. Skirts (Pencil, A-line, Pleated, Wrap; Mini to Maxi) hang across both legs with one hem curve, with waist, length and hem sweep in the live spec and basic pattern panels.

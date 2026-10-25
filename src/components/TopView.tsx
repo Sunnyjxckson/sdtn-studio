@@ -1,7 +1,8 @@
 import { memo } from 'react';
 import { WASHES, isDarkWash, type Garment } from '../model/garment';
 import { smooth, type TorsoProfile, type Vec } from '../model/figure';
-import { stiffOf, topForward, topShape, torsoPt } from '../model/top';
+import { sleeveOf, stiffOf, topForward, topShape, torsoPt, viewPoints } from '../model/top';
+import { BehindBody, OnBody, OverBody, type DetailCtx } from './TopDetails';
 import { mix } from '../model/color';
 import { topFolds } from '../model/topFolds';
 import { uv } from '../model/top';
@@ -47,12 +48,14 @@ interface Props {
   selectedText: number | null;
   /** Female croquis: shade under the bust. */
   bust: boolean;
+  view: 'front' | 'back';
 }
 
 /** A top drawn straight onto the body. Everything here is in canvas space. */
-export const TopView = memo(function TopView({ g, t, rendered, shading, selectedText, bust }: Props) {
+export const TopView = memo(function TopView({ g, t, rendered, shading, selectedText, bust, view }: Props) {
   const stiff = stiffOf(g.top);
-  const shape = topShape(t, g.points, stiff);
+  const pts = viewPoints(g.points, g.top, view);
+  const shape = topShape(t, pts, stiff, g.top);
   const body = smooth(shape.outline, true);
   const base = WASHES[g.wash];
   const dark = isDarkWash(g.wash);
@@ -68,7 +71,7 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
   const shadeC = mix(base, '#000000', dark ? 0.7 : 0.55);
   // set-in sleeve seam: from the shoulder point round the top of the arm to the underarm
   const armholes: string[] = [];
-  if (g.top && g.top.block !== 'Tank') {
+  if (g.top && sleeveOf(g.top) > 0) {
     for (const K of ['L', 'R'] as const) {
       const sh = g.points.find((p) => p.key === `sh${K}`), pit = g.points.find((p) => p.key === `arm${K}`);
       if (!sh || !pit) continue;
@@ -81,6 +84,8 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
     }
   }
   const fill = rendered ? `url(#${fabricId(g)})` : base;
+  const hemV = hemP ? uv(hemP).v : 1;
+  const dctx: DetailCtx = { g, t, shape, stiff, rendered, view, base, dark, fill, outline, hemV };
   const holes = g.holes.map((h, i) => {
     const c = topForward(t, { x: h.x, y: h.y }, stiff);
     const hh = { x: c.x, y: c.y, r: h.r * 1.1 };
@@ -115,6 +120,7 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
           <stop offset={1} stopColor="#000" stopOpacity={dark ? 0.28 : 0.16} />
         </linearGradient>
       </defs>
+      <BehindBody c={dctx} />
       <g mask={holes.length ? `url(#tm-${uid})` : undefined}>
         <path d={body} fill={fill} stroke={outline} strokeWidth={rendered ? 0.9 : 1.5} strokeLinejoin="round" data-kind="garment" data-gid={g.id} />
         {rendered && shading && (
@@ -138,6 +144,7 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
             })}
           </g>
         )}
+        <OnBody c={dctx} />
         {/* neckline binding */}
         <g fill="none" pointerEvents="none" strokeLinecap="round">
           <path d={line(shape.neckline)} stroke={outline} strokeWidth={0.8} transform="translate(0 3)" opacity={0.8} />
@@ -156,6 +163,7 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
           })}
         </g>
       </g>
+      <OverBody c={dctx} />
       {holes.map(({ i, poly }) => (
         <g key={`h${i}`}>
           <path d={polyPath(poly)} fill="none" stroke="#000" strokeWidth={0.8} opacity={0.45} pointerEvents="none" />

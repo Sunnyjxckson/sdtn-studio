@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { buildSheet } from '../model/pattern';
 import { PatternSheet } from './PatternSheet';
+import { attachTouchGestures } from '../touch';
 
 interface V {
   x: number;
@@ -50,6 +51,23 @@ export function PatternView() {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
+  const vRef = useRef(v);
+  vRef.current = v;
+  const hasSheet = !!sheet;
+  useEffect(() => {
+    const el = wrap.current?.querySelector('svg');
+    if (!el) return;
+    return attachTouchGestures(el, {
+      get: () => vRef.current,
+      set: (nv) => setV(nv),
+      min: 0.1,
+      max: 4,
+      cancel: () => {
+        drag.current = null;
+      },
+    });
+  }, [hasSheet]);
+
   const exportSvg = () => {
     const node = sheetRef.current;
     if (!node || !sheet || !g) return;
@@ -76,7 +94,7 @@ export function PatternView() {
       <div className="patternbar">
         <span className="toolname">Pattern</span>
         <span className="muted small toolhelp">
-          {g && g.type === 'top' ? `${g.name}. Pattern pieces for tops come next. Select jeans to see theirs.` : g ? `${g.name}. Pieces follow your fit, rise, length and leg opening. 1 in = 96 px.` : 'Add jeans from the Library to see the pattern.'}
+          {g && g.type === 'top' ? `${g.name}. Pattern pieces for tops come next. Select jeans, shorts or a skirt to see theirs.` : g ? `${g.name}. Pieces follow your ${g.type === 'skirt' ? 'waist, hip, length and hem sweep' : 'fit, rise, length and leg opening'}. 1 in = 96 px.` : 'Add a garment from the Library to see the pattern.'}
         </span>
         <div className="barend">
           <button className="btn" style={{ padding: '6px 12px' }} onClick={fit} disabled={!sheet}>Fit</button>
@@ -103,7 +121,7 @@ export function PatternView() {
             </g>
           </svg>
         ) : (
-          <div className="loading muted">{g && g.type === 'top' ? 'Pattern pieces for tops are on the way.' : 'No jeans yet. Pick a block from the Library.'}</div>
+          <div className="loading muted">{g && g.type === 'top' ? 'Pattern pieces for tops are on the way.' : 'No garment yet. Pick a block from the Library.'}</div>
         )}
       </div>
     </div>

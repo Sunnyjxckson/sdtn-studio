@@ -1,6 +1,6 @@
 // Sewing pattern pieces generated from a jeans garment's measurements.
 // All construction is in inches; the placed output is in pixels at 96 px per inch.
-import { findPoint, PX_IN_H, PX_IN_V, type Garment } from './garment';
+import { bandHeight, findPoint, PX_IN_H, PX_IN_V, type Garment } from './garment';
 
 export const PPI = 96;
 export const SEAM_ALLOWANCE = 0.375;
@@ -30,7 +30,7 @@ export function measures(g: Garment): Measures {
   const seam = wl.y;
   const hemY = Math.min(g.cropY ?? Infinity, Math.max(hemLi.y, hemLo.y));
   const rise = Math.max(5, (cr.y - seam) / PX_IN_V);
-  const length = Math.max(rise + 4, (hemY - seam) / PX_IN_V);
+  const length = Math.max(rise + 1, (hemY - seam) / PX_IN_V);
   const kneeY = Math.min(length - 1, Math.max(rise + 1, (kneeLi.y - seam) / PX_IN_V));
   return {
     waist: (2 * Math.abs(wr.x - wl.x)) / 9,
@@ -184,6 +184,37 @@ function rawPieces(m: Measures): RawPiece[] {
   return out;
 }
 
+/** Skirt blocks: a front and a back panel cut on the fold, plus the waistband. */
+function skirtPieces(g: Garment): RawPiece[] {
+  const p = g.points;
+  const wl = findPoint(p, 'waistL'), wr = findPoint(p, 'waistR');
+  const hl = findPoint(p, 'hemL'), hr = findPoint(p, 'hemR');
+  const waist = (2 * Math.abs(wr.x - wl.x)) / 9;
+  const hip = (2 * Math.abs(findPoint(p, 'hipR').x - findPoint(p, 'hipL').x)) / 9;
+  const sweep = (2 * Math.abs(hr.x - hl.x)) / 9;
+  const hemY = Math.min(g.cropY ?? Infinity, Math.max(hl.y, hr.y));
+  const L = Math.max(6, (hemY - wl.y) / PX_IN_V);
+  const hipDepth = Math.min(L - 2, Math.max(4, (findPoint(p, 'hipR').y - wl.y) / PX_IN_V));
+  const bh = bandHeight(g.parts.waist) / PX_IN_V;
+  const out: RawPiece[] = [];
+  for (const back of [false, true]) {
+    const wq = waist / 4 + 0.25, hq = hip / 4 + 0.5, sq = sweep / 4;
+    const hd = hipDepth + (back ? 0.3 : 0);
+    const poly: P[] = [[0, 0], [wq, back ? -0.4 : 0], ...quad([wq, 0], [(wq + hq) / 2 + 0.2, hd * 0.5], [hq, hd]), [sq, L], [0, L]];
+    out.push({
+      id: back ? 'back' : 'front',
+      name: back ? 'Back panel' : 'Front panel',
+      cut: 1,
+      poly,
+      grainX: Math.max(wq, sq) * 0.35,
+      notches: [[hq, hd]],
+    });
+  }
+  const len = waist + 1.5, h = bh * 2 + 0.5;
+  out.push({ id: 'band', name: 'Waistband', cut: 1, poly: [[0, 0], [len, 0], [len, h], [0, h]], grainX: len / 2, notches: [[len / 2, 0], [len * 0.25, 0], [len * 0.75, 0]] });
+  return out;
+}
+
 export interface PlacedPiece {
   id: string;
   name: string;
@@ -212,8 +243,7 @@ export interface Sheet {
 const toPath = (pts: P[]) => 'M' + pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' L') + ' Z';
 
 export function buildSheet(g: Garment, maxRowIn = 38): Sheet {
-  const m = measures(g);
-  const raws = rawPieces(m);
+  const raws = g.type === 'skirt' ? skirtPieces(g) : rawPieces(measures(g));
   const ruler = 0.6;
   const gap = 0.6;
 

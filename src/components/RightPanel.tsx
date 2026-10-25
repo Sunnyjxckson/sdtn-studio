@@ -6,8 +6,15 @@ import {
   PX_IN_H,
   PX_IN_V,
   FIT_NAMES,
+  HEM_NAMES,
   HOLE_SIZES,
   POCKET_NAMES,
+  SHORTS_FIT_NAMES,
+  SHORTS_LENGTH_NAMES,
+  SHORTS_WAIST_NAMES,
+  SKIRT_LENGTH_NAMES,
+  SKIRT_SHAPE_NAMES,
+  SKIRT_WAIST_NAMES,
   RISE_NAMES,
   TEXT_SIZES,
   WAIST_NAMES,
@@ -16,7 +23,7 @@ import {
   type HoleSize,
 } from '../model/garment';
 import { Icon } from './icons';
-import { computeTopSpec, NECKS, TOP_BLOCKS, TOP_FITS, TOP_LENGTHS } from '../model/top';
+import { computeTopSpec, DRESS_LENS, DRESS_TOPS, dressLenOf, dressTopOf, NECKS, silhouetteOf, SILHOUETTES, TOP_BLOCKS, TOP_FITS, TOP_LENGTHS } from '../model/top';
 import { torsoProfile } from '../model/figure';
 import { TOP_FABRICS, type Garment } from '../model/garment';
 
@@ -71,7 +78,7 @@ export function RightPanel() {
       <aside className="panel right">
         <div className="empty">
           <h2>No garment selected</h2>
-          <p className="muted">Pick a block from the Library to put jeans on the body, or click a garment on the canvas.</p>
+          <p className="muted">Pick a block from the Library to put it on the body, or click a garment on the canvas.</p>
         </div>
       </aside>
     );
@@ -80,11 +87,23 @@ export function RightPanel() {
   const spec = computeSpec(g);
   const p = g.points;
   const hemY = Math.max(findPoint(p, 'hemLo').y, findPoint(p, 'hemLi').y);
-  const sliders = [
-    { m: 'inseam' as const, label: 'Length', v: (hemY - findPoint(p, 'crotch').y) / PX_IN_V, min: 22, max: 32 },
-    { m: 'knee' as const, label: 'Knee', v: Math.abs(findPoint(p, 'kneeLi').x - findPoint(p, 'kneeLo').x) / PX_IN_H, min: 6, max: 14 },
-    { m: 'opening' as const, label: 'Leg opening', v: Math.abs(findPoint(p, 'hemLi').x - findPoint(p, 'hemLo').x) / PX_IN_H, min: 6, max: 18 },
-  ];
+  const shorts = g.type === 'shorts';
+  const skirt = g.type === 'skirt';
+  const sliders = skirt
+    ? [
+        { m: 'inseam' as const, label: 'Length', v: Math.max(0, Math.max(findPoint(p, 'hemL').y, findPoint(p, 'hemR').y) - (findPoint(p, 'waistL').y - 14)) / PX_IN_V, min: 12, max: 46 },
+        { m: 'opening' as const, label: 'Hem sweep', v: Math.abs(findPoint(p, 'hemR').x - findPoint(p, 'hemL').x) / 4.5, min: 28, max: 90 },
+      ]
+    : shorts
+      ? [
+          { m: 'inseam' as const, label: 'Inseam', v: (hemY - findPoint(p, 'crotch').y) / PX_IN_V, min: 1, max: 22 },
+          { m: 'opening' as const, label: 'Leg opening', v: Math.abs(findPoint(p, 'hemLi').x - findPoint(p, 'hemLo').x) / PX_IN_H, min: 6, max: 24 },
+        ]
+      : [
+          { m: 'inseam' as const, label: 'Length', v: (hemY - findPoint(p, 'crotch').y) / PX_IN_V, min: 22, max: 32 },
+          { m: 'knee' as const, label: 'Knee', v: Math.abs(findPoint(p, 'kneeLi').x - findPoint(p, 'kneeLo').x) / PX_IN_H, min: 6, max: 14 },
+          { m: 'opening' as const, label: 'Leg opening', v: Math.abs(findPoint(p, 'hemLi').x - findPoint(p, 'hemLo').x) / PX_IN_H, min: 6, max: 18 },
+        ];
   const text = selText != null ? g.texts[selText] : undefined;
 
   return (
@@ -127,17 +146,32 @@ export function RightPanel() {
         </Group>
       )}
 
-      <Group label="FIT">
-        <div className="grid3">
-          {FIT_NAMES.map((n) => (
-            <button key={n} className={n === g.fit ? 'opt on' : 'opt'} onClick={() => a().setFit(g.id, n)}>
-              {n}
-            </button>
-          ))}
-        </div>
-        <Options names={RISE_NAMES} value={g.rise} onPick={(n) => a().setRise(g.id, n)} />
-        <p className="hint">Picking a fit or rise resets the outline. Holes, rips, text and cuts stay.</p>
-      </Group>
+      {skirt && g.skirt ? (
+        <Group label="SILHOUETTE">
+          <div className="grid2">
+            {SKIRT_SHAPE_NAMES.map((n) => (
+              <button key={n} className={n === g.skirt!.shape ? 'opt on' : 'opt'} onClick={() => a().setSkirt(g.id, { shape: n })}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <Options names={SKIRT_LENGTH_NAMES} value={g.skirt.length} onPick={(n) => a().setSkirt(g.id, { length: n })} />
+          <p className="hint">Picking a silhouette or length resets the outline. Holes, rips, text and cuts stay.</p>
+        </Group>
+      ) : (
+        <Group label="FIT">
+          {shorts && g.shorts && <Options names={SHORTS_LENGTH_NAMES} value={g.shorts.length} onPick={(n) => a().setShortsLength(g.id, n)} />}
+          <div className="grid3">
+            {(shorts ? SHORTS_FIT_NAMES : FIT_NAMES).map((n) => (
+              <button key={n} className={n === g.fit ? 'opt on' : 'opt'} onClick={() => a().setFit(g.id, n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <Options names={RISE_NAMES} value={g.rise} onPick={(n) => a().setRise(g.id, n)} />
+          <p className="hint">Picking a fit, length or rise resets the outline. Holes, rips, text and cuts stay.</p>
+        </Group>
+      )}
 
       <Group label="SHAPE">
         {sliders.map((sl) => (
@@ -177,9 +211,10 @@ export function RightPanel() {
         <p className="hint">Fabric shows in the Rendered look.</p>
       </Group>
 
-      <Group label="DETAILS">
-        <Options names={WAIST_NAMES} value={g.parts.waist} onPick={(n) => a().setWaist(g.id, n)} />
-        <Options names={POCKET_NAMES} value={g.parts.pocket} onPick={(n) => a().setPocket(g.id, n)} />
+      <Group label={skirt ? 'WAISTBAND' : 'DETAILS'}>
+        <Options names={skirt ? SKIRT_WAIST_NAMES : shorts ? SHORTS_WAIST_NAMES : WAIST_NAMES} value={g.parts.waist} onPick={(n) => a().setWaist(g.id, n)} />
+        {!skirt && <Options names={POCKET_NAMES} value={g.parts.pocket} onPick={(n) => a().setPocket(g.id, n)} />}
+        {shorts && <Options names={HEM_NAMES} value={g.parts.hem ?? 'Clean'} onPick={(n) => a().setHem(g.id, n)} />}
       </Group>
 
       <Group label="COLOR">
@@ -264,13 +299,23 @@ function TopPanel({ g }: { g: Garment }) {
       </Group>
       <Group label="FIT">
         <Options names={TOP_FITS} value={o.fit} onPick={(n) => a().setTop(g.id, { fit: n })} />
-        <Options names={TOP_LENGTHS} value={o.length} onPick={(n) => a().setTop(g.id, { length: n })} />
-        <Options names={NECKS} value={o.neck} onPick={(n) => a().setTop(g.id, { neck: n })} />
-        <div className="opts">
-          <button className={o.tuck ? 'opt on' : 'opt'} onClick={() => a().setTop(g.id, { tuck: !o.tuck })}>
-            Tucked in
-          </button>
-        </div>
+        {o.block === 'Dress' ? (
+          <>
+            <Options names={SILHOUETTES} value={silhouetteOf(o)} onPick={(n) => a().setTop(g.id, { silhouette: n })} />
+            <Options names={DRESS_LENS} value={dressLenOf(o)} onPick={(n) => a().setTop(g.id, { dressLen: n })} />
+            <Options names={DRESS_TOPS} value={dressTopOf(o)} onPick={(n) => a().setTop(g.id, { dressTop: n })} />
+          </>
+        ) : (
+          <Options names={TOP_LENGTHS} value={o.length} onPick={(n) => a().setTop(g.id, { length: n })} />
+        )}
+        {o.block !== 'Hoodie' && o.block !== 'Moto jacket' && <Options names={NECKS} value={o.neck} onPick={(n) => a().setTop(g.id, { neck: n })} />}
+        {o.block !== 'Hoodie' && o.block !== 'Moto jacket' && o.block !== 'Dress' && (
+          <div className="opts">
+            <button className={o.tuck ? 'opt on' : 'opt'} onClick={() => a().setTop(g.id, { tuck: !o.tuck })}>
+              Tucked in
+            </button>
+          </div>
+        )}
         <p className="hint">These reset the outline to fit the body again. Drag the dots to change it.</p>
       </Group>
       <Group label="FABRIC">

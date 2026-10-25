@@ -9,6 +9,9 @@ import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/caveat/700.css';
 import './styles.css';
 import App from './App';
+import { blockPageGestures } from './touch';
+
+blockPageGestures();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

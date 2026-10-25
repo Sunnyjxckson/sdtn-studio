@@ -19,6 +19,7 @@ import {
 } from '../../model/vector';
 import { clientToLocal } from '../../svgCoords';
 import { MAX_ZOOM, MIN_ZOOM, zoomBy } from '../../viewport';
+import { attachTouchGestures } from '../../touch';
 import { setToolCtx } from '../../vector/commands';
 import { selectedItems } from '../../vector/edit';
 import { getGuides, onGuides, setGuides, snapPoint } from '../../vector/snap';
@@ -258,8 +259,7 @@ export function VectorOverlay() {
   const [panning, setPanning] = useState(false);
   const pan = useRef<{ sx: number; sy: number; vx: number; vy: number } | null>(null);
   const down = useRef(false);
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinch = useRef<{ d: number; cx: number; cy: number; view: { x: number; y: number; k: number } } | null>(null);
+  const cancelToolRef = useRef<((e: PointerEvent) => void) | null>(null);
   const tool = toolById(vtool);
   const k = view.k;
 
@@ -305,6 +305,23 @@ export function VectorOverlay() {
     const t = setTimeout(() => setToastMsg(null), 1800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // two finger pinch and pan, and palm rejection when a pencil is in use
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    return attachTouchGestures(el, {
+      get: () => useStore.getState().view,
+      set: (v) => useStore.getState().setView(v),
+      min: MIN_ZOOM,
+      max: MAX_ZOOM,
+      cancel: (e) => {
+        if (!down.current) return;
+        down.current = false;
+        cancelToolRef.current?.(e);
+      },
+    });
+  }, []);
 
   useEffect(() => {
     const el = svgRef.current;
@@ -354,21 +371,13 @@ export function VectorOverlay() {
     };
   };
 
+  cancelToolRef.current = (e) => tool.up?.(toEvt(e as unknown as React.PointerEvent), ctx);
+
   const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
       // fine
-    }
-    if (pointers.current.size === 2) {
-      // second finger: stop the tool and pinch zoom instead
-      if (down.current) tool.up?.(toEvt(e), ctx);
-      down.current = false;
-      const [a, b] = [...pointers.current.values()];
-      const r = svgRef.current!.getBoundingClientRect();
-      pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2 - r.left, cy: (a.y + b.y) / 2 - r.top, view: { ...useStore.getState().view } };
-      return;
     }
     if (e.button === 1 || space || tool.id === 'hand') {
       e.preventDefault();
@@ -383,17 +392,6 @@ export function VectorOverlay() {
     tool.down?.(toEvt(e), readHit(e.target as Element), ctx);
   };
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinch.current && pointers.current.size >= 2) {
-      const [a, b] = [...pointers.current.values()];
-      const r = svgRef.current!.getBoundingClientRect();
-      const p = pinch.current;
-      const nk = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, (p.view.k * Math.hypot(a.x - b.x, a.y - b.y)) / (p.d || 1)));
-      const cx = (a.x + b.x) / 2 - r.left, cy = (a.y + b.y) / 2 - r.top;
-      const wx = (p.cx - p.view.x) / p.view.k, wy = (p.cy - p.view.y) / p.view.k;
-      useStore.getState().setView({ k: nk, x: cx - wx * nk, y: cy - wy * nk });
-      return;
-    }
     if (pan.current) {
       const p = pan.current;
       const st = useStore.getState();
@@ -404,11 +402,6 @@ export function VectorOverlay() {
     else if (e.pointerType !== 'touch') tool.hover?.(toEvt(e), readHit(e.target as Element), ctx);
   };
   const onUp = (e: React.PointerEvent<SVGSVGElement>) => {
-    pointers.current.delete(e.pointerId);
-    if (pinch.current) {
-      if (pointers.current.size < 2) pinch.current = null;
-      return;
-    }
     if (pan.current) {
       pan.current = null;
       setPanning(false);

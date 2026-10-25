@@ -6,13 +6,19 @@
 // y = 100 + o * 100 across it (-1 outer edge, +1 inner edge, beyond is ease).
 
 import type { TorsoProfile, Vec } from './figure';
-import type { Pt } from './garment';
+import type { Garment, Pt } from './garment';
 
-export type TopBlock = 'Tank' | 'Tee' | 'Long sleeve';
+export type TopBlock = 'Tank' | 'Tee' | 'Long sleeve' | 'Hoodie' | 'Moto jacket' | 'Dress';
+export type Silhouette = 'Slip' | 'Bodycon' | 'A-line';
+export type DressLen = 'Mini' | 'Midi' | 'Maxi';
+export type DressTop = 'Straps' | 'Wide strap' | 'Strapless' | 'Short sleeve' | 'Long sleeve';
 export type TopFit = 'Fitted' | 'Regular' | 'Oversized';
 export type TopLength = 'Crop' | 'Waist' | 'Hip' | 'Long';
 export type NeckKind = 'Crew' | 'Scoop' | 'V';
-export const TOP_BLOCKS: TopBlock[] = ['Tank', 'Tee', 'Long sleeve'];
+export const TOP_BLOCKS: TopBlock[] = ['Tank', 'Tee', 'Long sleeve', 'Hoodie', 'Moto jacket', 'Dress'];
+export const SILHOUETTES: Silhouette[] = ['Slip', 'Bodycon', 'A-line'];
+export const DRESS_LENS: DressLen[] = ['Mini', 'Midi', 'Maxi'];
+export const DRESS_TOPS: DressTop[] = ['Straps', 'Wide strap', 'Strapless', 'Short sleeve', 'Long sleeve'];
 export const TOP_FITS: TopFit[] = ['Fitted', 'Regular', 'Oversized'];
 export const TOP_LENGTHS: TopLength[] = ['Crop', 'Waist', 'Hip', 'Long'];
 export const NECKS: NeckKind[] = ['Crew', 'Scoop', 'V'];
@@ -23,7 +29,39 @@ export interface TopOpts {
   length: TopLength;
   neck: NeckKind;
   tuck: boolean;
+  /** Dress only (older saves leave these out). */
+  silhouette?: Silhouette;
+  dressLen?: DressLen;
+  dressTop?: DressTop;
 }
+
+export function topName(o: TopOpts): string {
+  if (o.block === 'Dress') return `${silhouetteOf(o)} dress`;
+  const n = o.block === 'Tank' ? 'tank' : o.block === 'Tee' ? 'tee' : o.block === 'Long sleeve' ? 'long sleeve' : o.block === 'Hoodie' ? 'hoodie' : 'moto jacket';
+  return `${o.fit} ${n}`;
+}
+export const isDress = (o?: TopOpts) => o?.block === 'Dress';
+/** Block, fabric and wash a new block starts with. */
+export const BLOCK_LOOK: Partial<Record<TopBlock, { fabric: 'Jersey' | 'Leather' | 'Satin'; wash: 'Black' | 'Heather' }>> = {
+  Hoodie: { fabric: 'Jersey', wash: 'Heather' },
+  'Moto jacket': { fabric: 'Leather', wash: 'Black' },
+  Dress: { fabric: 'Satin', wash: 'Black' },
+};
+export const dressTopOf = (o: TopOpts): DressTop => o.dressTop ?? 'Straps';
+export const dressLenOf = (o: TopOpts): DressLen => o.dressLen ?? 'Midi';
+export const silhouetteOf = (o: TopOpts): Silhouette => o.silhouette ?? 'Slip';
+/** Does the top have sleeves, and how long (in arm units, 2 is the wrist). */
+export function sleeveOf(o: TopOpts): number {
+  switch (o.block) {
+    case 'Tank': return 0;
+    case 'Tee': return o.fit === 'Fitted' && o.length === 'Crop' ? 0.3 : 0.44;
+    case 'Dress': return dressTopOf(o) === 'Long sleeve' ? 2.02 : dressTopOf(o) === 'Short sleeve' ? 0.4 : 0;
+    default: return 2.02;
+  }
+}
+/** Cuffed sleeves end narrower than the sleeve above them. */
+const CUFF: Record<TopFit, number> = { Fitted: 1.0, Regular: 1.1, Oversized: 1.26 };
+export const cuffedOf = (o: TopOpts): number | null => (o.block === 'Hoodie' || o.block === 'Moto jacket' ? CUFF[o.fit] : null);
 
 export const torsoPt = (u: number, v: number, key?: string): Pt => ({ x: 150 + u * 100, y: 100 + v * 200, ...(key ? { key } : {}) });
 const armPt = (side: 'armL' | 'armR', a: number, o: number, key?: string): Pt => ({ x: a * 100, y: 100 + o * 100, r: side, ...(key ? { key } : {}) });
@@ -34,14 +72,78 @@ const EASE: Record<TopFit, { body: number; waist: number; sleeve: number; should
   Regular: { body: 1.1, waist: 1.1, sleeve: 1.26, shoulder: 1.07, drop: 0.03 },
   Oversized: { body: 1.26, waist: 1.3, sleeve: 1.55, shoulder: 1.2, drop: 0.12 },
 };
+const EASE_HOODIE: typeof EASE = {
+  Fitted: { body: 1.1, waist: 1.07, sleeve: 1.12, shoulder: 1.05, drop: 0.02 },
+  Regular: { body: 1.2, waist: 1.15, sleeve: 1.24, shoulder: 1.1, drop: 0.07 },
+  Oversized: { body: 1.4, waist: 1.36, sleeve: 1.5, shoulder: 1.28, drop: 0.2 },
+};
+const EASE_MOTO: typeof EASE = {
+  Fitted: { body: 1.05, waist: 1.02, sleeve: 1.12, shoulder: 1.05, drop: 0 },
+  Regular: { body: 1.13, waist: 1.08, sleeve: 1.24, shoulder: 1.09, drop: 0.03 },
+  Oversized: { body: 1.3, waist: 1.24, sleeve: 1.48, shoulder: 1.22, drop: 0.1 },
+};
+const easeOf = (o: TopOpts) => (o.block === 'Hoodie' ? EASE_HOODIE : o.block === 'Moto jacket' ? EASE_MOTO : EASE)[o.fit];
 const LENGTH_V: Record<TopLength, number> = { Crop: 0.8, Waist: 1.1, Hip: 1.4, Long: 1.7 };
+const LENGTH_MOTO: Record<TopLength, number> = { Crop: 0.85, Waist: 1.12, Hip: 1.32, Long: 1.58 };
 const NECK_V: Record<NeckKind, number> = { Crew: 0.07, Scoop: 0.17, V: 0.27 };
+
+/** Skirt v: 1.5 is the hip, and the ankle is 1.1 further down. */
+const SKIRT_V = 1.1;
+const DRESS_S: Record<DressLen, number> = { Mini: 0.2, Midi: 0.62, Maxi: 0.93 };
+export const dressHemV = (o: TopOpts) => 1.5 + SKIRT_V * DRESS_S[dressLenOf(o)];
+
+function buildDress(o: TopOpts): Pt[] {
+  const e = EASE[o.fit];
+  const top = dressTopOf(o);
+  const sil = silhouetteOf(o);
+  const sl = sleeveOf(o);
+  const bare = top === 'Straps' || top === 'Strapless';
+  const hv = dressHemV(o);
+  const s01 = DRESS_S[dressLenOf(o)];
+  // skirt width as a multiple of the leg span, at the hip, mid skirt and hem
+  const W = sil === 'Slip' ? [1.07, 1.1, 1.14] : sil === 'Bodycon' ? [1.02, 1.02, 1.01] : [1.12, 1.12 + (0.2 + 0.55 * s01) * 0.5, 1.2 + 0.55 * s01];
+  const waistU = sil === 'Slip' ? e.waist * 1.04 : sil === 'Bodycon' ? Math.min(e.waist, 1.04) : 1.04;
+  const bodyU = sil === 'Bodycon' ? Math.min(e.body, 1.05) : e.body;
+  const side = (s: -1 | 1): Pt[] => {
+    const k = s < 0 ? 'L' : 'R';
+    const arm = s < 0 ? 'armL' : 'armR';
+    const out: Pt[] = [];
+    if (top === 'Wide strap') {
+      out.push(torsoPt(s * 0.6, 0.02, `strap${k}`));
+      out.push(torsoPt(s * bodyU, 0.36, `arm${k}`));
+    } else if (bare) {
+      out.push(torsoPt(s * Math.min(bodyU, 1.02), 0.46, `arm${k}`));
+    } else {
+      out.push(torsoPt(s * e.shoulder, -0.015, `sh${k}`));
+      out.push(armPt(arm, sl + e.drop, -(e.sleeve + 0.14), `slO${k}`));
+      out.push(armPt(arm, sl + e.drop - 0.05, e.sleeve + 0.06, `slI${k}`));
+      out.push(torsoPt(s * bodyU, 0.32 + e.drop, `arm${k}`));
+    }
+    out.push(torsoPt(s * waistU, 1.0, `side${k}`));
+    out.push(torsoPt(s * W[0], 1.5, `sk1${k}`));
+    out.push(torsoPt(s * W[1], 1.5 + (hv - 1.5) * 0.5, `sk2${k}`));
+    out.push(torsoPt(s * W[2], hv, `hem${k}`));
+    return out;
+  };
+  const left = side(-1);
+  const right = side(1).reverse();
+  if (bare) {
+    const dip = o.neck === 'V' ? 0.2 : o.neck === 'Scoop' ? 0.08 : 0.025;
+    return [torsoPt(-0.9, 0.33, 'neckL'), ...left, ...right, torsoPt(0.9, 0.33, 'neckR'), torsoPt(0, 0.33 + dip, 'neckF')];
+  }
+  const neckW = top === 'Wide strap' ? 0.36 : 0.3;
+  return [torsoPt(-neckW, -0.01, 'neckL'), ...left, ...right, torsoPt(neckW, -0.01, 'neckR'), torsoPt(0, NECK_V[o.neck] + (top === 'Wide strap' ? 0.06 : 0), 'neckF')];
+}
 
 /** Keyed outline points, clockwise from the left neck, ending at the front neck point. */
 export function buildTopPoints(o: TopOpts): Pt[] {
-  const e = EASE[o.fit];
-  const len = o.tuck ? 1.12 : LENGTH_V[o.length];
-  const neckW = o.block === 'Tank' ? 0.36 : 0.3;
+  if (o.block === 'Dress') return buildDress(o);
+  const e = easeOf(o);
+  const moto = o.block === 'Moto jacket', hood = o.block === 'Hoodie';
+  const lengths = moto ? LENGTH_MOTO : LENGTH_V;
+  const len = o.tuck ? 1.12 : lengths[o.length];
+  const neckW = o.block === 'Tank' ? 0.36 : moto ? 0.32 : 0.3;
+  const cuff = cuffedOf(o);
   const side = (s: -1 | 1): Pt[] => {
     const k = s < 0 ? 'L' : 'R';
     const arm = s < 0 ? 'armL' : 'armR';
@@ -50,20 +152,31 @@ export function buildTopPoints(o: TopOpts): Pt[] {
       out.push(torsoPt(s * 0.6, 0.02, `strap${k}`));
       out.push(torsoPt(s * e.body, 0.36, `arm${k}`));
     } else {
-      const sleeveLen = o.block === 'Long sleeve' ? 2.02 : o.fit === 'Fitted' && o.length === 'Crop' ? 0.3 : 0.44;
+      const sleeveLen = sleeveOf(o);
       out.push(torsoPt(s * e.shoulder, -0.015, `sh${k}`));
-      // sleeves open out a little toward the hem
-      out.push(armPt(arm, sleeveLen + e.drop, -(e.sleeve + 0.14), `slO${k}`));
-      out.push(armPt(arm, sleeveLen + e.drop - 0.05, e.sleeve + 0.06, `slI${k}`));
+      // sleeves open out a little toward the hem, unless a cuff holds them in
+      out.push(armPt(arm, sleeveLen + e.drop, -(cuff ?? e.sleeve + 0.14), `slO${k}`));
+      out.push(armPt(arm, sleeveLen + e.drop - 0.05, cuff ?? e.sleeve + 0.06, `slI${k}`));
       out.push(torsoPt(s * e.body, 0.32 + e.drop, `arm${k}`));
     }
     out.push(torsoPt(s * (o.length === 'Crop' && !o.tuck ? e.body * 0.97 : e.waist), Math.min(1, len - 0.02), `side${k}`));
-    out.push(torsoPt(s * (len > 1.2 ? Math.max(e.waist, e.body) * 1.04 + 0.1 : e.waist), len, `hem${k}`));
+    // hoodie and jacket hems are gathered in by a band, so they do not flare
+    const flare = !hood && !moto && len > 1.2;
+    out.push(torsoPt(s * (flare ? Math.max(e.waist, e.body) * 1.04 + 0.1 : hood ? e.waist * 0.99 : e.waist), len, `hem${k}`));
     return out;
   };
   const left = side(-1);
   const right = side(1).reverse();
-  return [torsoPt(-neckW, -0.01, 'neckL'), ...left, ...right, torsoPt(neckW, -0.01, 'neckR'), torsoPt(0, NECK_V[o.neck] + (o.block === 'Tank' ? 0.06 : 0), 'neckF')];
+  const nf = torsoPt(0, moto ? 0.46 : NECK_V[o.neck] + (o.block === 'Tank' ? 0.06 : hood ? 0.03 : 0), 'neckF');
+  if (moto) nf.vee = true;
+  return [torsoPt(-neckW, -0.01, 'neckL'), ...left, ...right, torsoPt(neckW, -0.01, 'neckR'), nf];
+}
+
+/** Points as they show from the front or back: the back neckline sits high. */
+export function viewPoints(points: Pt[], o: TopOpts | undefined, view: 'front' | 'back'): Pt[] {
+  if (view !== 'back') return points;
+  const backV = o?.block === 'Dress' && (o.dressTop === 'Strapless' || o.dressTop === undefined || o.dressTop === 'Straps') ? 0.33 : o?.block === 'Tank' ? 0.1 : 0.05;
+  return points.map((p) => (p.key === 'neckF' ? { ...p, y: Math.min(p.y, 100 + backV * 200), vee: undefined } : p));
 }
 
 // ---------- mapping onto the body ----------
@@ -95,7 +208,24 @@ const neckY = (t: TorsoProfile) => (t.neck[0].y + t.neck[1].y) / 2;
 
 function vToY(t: TorsoProfile, v: number): number {
   const yN = neckY(t);
+  if (v > 1.5) return t.hipY + ((v - 1.5) / SKIRT_V) * (t.ankleY - t.hipY);
   return v <= 1 ? yN + v * (t.waistY - yN) : t.waistY + ((v - 1) / 0.5) * (t.hipY - t.waistY);
+}
+
+/** Canvas height per unit v at v. */
+function dYdv(t: TorsoProfile, v: number): number {
+  if (v > 1.5) return (t.ankleY - t.hipY) / SKIRT_V;
+  return v > 1 ? (t.hipY - t.waistY) / 0.5 : t.waistY - neckY(t);
+}
+
+/** Centre and half width of a skirt at y: the hip at the top, the span of both legs below. */
+function skirtHalf(t: TorsoProfile, y: number): { c: number; h: number } {
+  const [l0, r0] = edges(t, t.hipY);
+  const [l1, r1] = t.span(y);
+  const k = Math.max(0, Math.min(1, (y - t.hipY) / 40));
+  const w = k * k * (3 - 2 * k);
+  const l = l0 + (l1 - l0) * w, r = r0 + (r1 - r0) * w;
+  return { c: (l + r) / 2, h: (r - l) / 2 };
 }
 
 /** Height of the top of the shoulder at canvas x (neck to tip), or null past the tip. */
@@ -144,6 +274,11 @@ function halfAt(t: TorsoProfile, y: number, stiff: number): { c: number; h: numb
 }
 
 function torsoForward(t: TorsoProfile, u: number, v: number, stiff: number): Vec {
+  if (v > 1.5) {
+    const ys = vToY(t, v);
+    const { c, h } = skirtHalf(t, ys);
+    return { x: c + u * h, y: ys };
+  }
   let y = vToY(t, v);
   let x = 0;
   // near the top, ride the actual shoulder line (a little above the skin) so nothing shows
@@ -201,14 +336,13 @@ export function topInverse(t: TorsoProfile, q: Vec, region?: Pt['r'], stiff = 0)
   }
   // numeric inverse: start from the plain mapping and walk toward the target
   const yN = neckY(t);
-  const dYdv = t.waistY - yN;
-  let v = q.y <= t.waistY ? (q.y - yN) / dYdv : 1 + ((q.y - t.waistY) / (t.hipY - t.waistY)) * 0.5;
+  let v = q.y <= t.waistY ? (q.y - yN) / (t.waistY - yN) : q.y <= t.hipY ? 1 + ((q.y - t.waistY) / (t.hipY - t.waistY)) * 0.5 : 1.5 + ((q.y - t.hipY) / (t.ankleY - t.hipY)) * SKIRT_V;
   let u = 0;
-  for (let i = 0; i < 12; i++) {
-    const { h } = halfAt(t, q.y, stiff);
+  for (let i = 0; i < 14; i++) {
     const f = torsoForward(t, u, v, stiff);
+    const { h } = v > 1.5 ? skirtHalf(t, f.y) : halfAt(t, q.y, stiff);
     u += (q.x - f.x) / (h || 1);
-    v += (q.y - f.y) / (v > 1 ? (t.hipY - t.waistY) / 0.5 : dYdv);
+    v += (q.y - f.y) / dYdv(t, v);
   }
   return torsoPt(u, v);
 }
@@ -236,9 +370,9 @@ export interface TopShape {
 
 /** Map the top onto the body, adding in-between points so every edge follows the body. */
 /** How straight a fit hangs. */
-export const stiffOf = (o?: TopOpts) => (o?.fit === 'Oversized' ? 1 : o?.fit === 'Regular' ? 0.65 : 0);
+export const stiffOf = (o?: TopOpts) => (o?.block === 'Dress' || o?.block === 'Moto jacket' ? 0 : o?.fit === 'Oversized' ? 1 : o?.fit === 'Regular' ? 0.65 : 0);
 
-export function topShape(t: TorsoProfile, points: Pt[], stiff = 0): TopShape {
+export function topShape(t: TorsoProfile, points: Pt[], stiff = 0, o?: TopOpts): TopShape {
   const n = points.length;
   const F = (p: Pt) => topForward(t, p, stiff);
   const outline: Vec[] = [];
@@ -259,7 +393,14 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0): TopShape {
       const f = points[iNF];
       b = points[(iNF + 1) % n];
       const c = { x: 2 * f.x - (a.x + b.x) / 2, y: 2 * f.y - (a.y + b.y) / 2 } as Pt;
-      for (let k = 1; k < 16; k++) steps.push(quad(a, c, b, k / 16));
+      if (f.vee) {
+        // two straight runs meeting at the front point
+        for (let k = 1; k < 8; k++) steps.push(lerpPt(a, f, k / 8));
+        steps.push(f);
+        for (let k = 1; k < 8; k++) steps.push(lerpPt(f, b, k / 8));
+      } else {
+        for (let k = 1; k < 16; k++) steps.push(quad(a, c, b, k / 16));
+      }
       index[i] = outline.length;
       outline.push(F(a));
       index[iNF] = outline.length + 7;
@@ -281,8 +422,9 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0): TopShape {
           const f = k / cnt2;
           const p = lerpPt(a, b, f);
           // looser tops ripple along the hem as the fabric hangs in soft folds
-          const wave = stiff * 3.2 * Math.sin(f * Math.PI * 7 + 0.6) * Math.sin(Math.PI * f);
-          steps.push({ ...p, y: p.y + 4 * Math.sin(Math.PI * f) + wave });
+          const skirtWave = o?.block === 'Dress' ? (o.silhouette === 'A-line' ? 3.4 : o.silhouette === 'Slip' ? 1.1 : 0) : 0;
+          const wave = (stiff * 3.2 + skirtWave) * Math.sin(f * Math.PI * 7 + 0.6) * Math.sin(Math.PI * f);
+          steps.push({ ...p, y: p.y + (o?.block === 'Dress' ? 5 : 4) * Math.sin(Math.PI * f) + wave });
         }
       } else if (a.r && a.r === b.r && /^sl/.test(key(a)) && /^sl/.test(key(b))) {
         // sleeve hem: curves around the arm
@@ -360,9 +502,13 @@ export function computeTopSpec(points: Pt[], t: TorsoProfile): { k: string; v: s
   if (sL && sR) rows.push({ k: 'Shoulder', v: `${half((t.inches.shoulder * (uv(sR).u - uv(sL).u)) / 2)} in` });
   if (hL) {
     const v = uv(hL).v;
-    const len = v <= 1 ? v * t.inches.torso : t.inches.torso + (v - 1) * 2 * 7;
+    const len = v <= 1 ? v * t.inches.torso : v <= 1.5 ? t.inches.torso + (v - 1) * 2 * 7 : t.inches.torso + 7 + ((v - 1.5) / SKIRT_V) * 30;
     rows.push({ k: 'Body length', v: `${half(len + 2)} in` });
   }
   if (slO) rows.push({ k: 'Sleeve', v: `${half((slO.x / 100) * (t.inches.arm / 2))} in` });
   return rows;
 }
+
+/** The shape a top draws as, from the front or the back. */
+export const garmentShape = (t: TorsoProfile, g: Pick<Garment, 'points' | 'top'>, view: 'front' | 'back'): TopShape =>
+  topShape(t, viewPoints(g.points, g.top, view), stiffOf(g.top), g.top);

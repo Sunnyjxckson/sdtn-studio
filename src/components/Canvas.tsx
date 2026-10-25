@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore, defaultText, holeRadius } from '../store';
 import { nearestSegment, MIN_CROP_Y, GARMENT_H, type Garment } from '../model/garment';
 import { clientToLocal } from '../svgCoords';
-import { fitToArtboard, setCanvasSize, zoomBy } from '../viewport';
+import { fitToArtboard, MAX_ZOOM, MIN_ZOOM, setCanvasSize, zoomBy } from '../viewport';
+import { attachTouchGestures } from '../touch';
 import { Artboard, CroquisView } from './CroquisView';
 import { GarmentView } from './GarmentView';
 import { notePaths } from '../model/note';
 import { bodyProfile, IDENTITY_RIG, poseRig, poseUnwarp, torsoProfile, type Vec } from '../model/figure';
-import { stiffOf, topForward, topInverse, topShape } from '../model/top';
+import { garmentShape, stiffOf, topForward, topInverse } from '../model/top';
 import { TopView } from './TopView';
 import type { Pt } from '../model/garment';
 import { fitGarment } from '../model/conform';
@@ -93,6 +94,22 @@ export function Canvas() {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // two finger pinch and pan, and palm rejection when a pencil is in use
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    return attachTouchGestures(el, {
+      get: () => useStore.getState().view,
+      set: (v) => useStore.getState().setView(v),
+      min: MIN_ZOOM,
+      max: MAX_ZOOM,
+      cancel: () => {
+        drag.current = null;
+        setPanning(false);
+      },
+    });
   }, []);
 
   // space key for temporary pan
@@ -419,7 +436,7 @@ export function Canvas() {
     const edge = s === 0 ? 0 : 600;
     return `M${edge},${yLim} L${pts.join(' L')} L${edge},1000 Z`;
   });
-  const selTop = showHandles && sel && sel.type === 'top' ? topShape(torso, sel.points, stiffOf(sel.top)) : null;
+  const selTop = showHandles && sel && sel.type === 'top' ? garmentShape(torso, sel, doc.base.view) : null;
   // tucked tops go under everything else
   const ordered = [...doc.garments.filter((g) => g.type === 'top' && g.top?.tuck), ...doc.garments.filter((g) => !(g.type === 'top' && g.top?.tuck))];
 
@@ -450,7 +467,7 @@ export function Canvas() {
           if (!g.visible) return null;
           if (g.type === 'top') {
             return (
-              <TopView key={g.id} g={g} t={torso} rendered={rendered} shading={doc.settings.shading} selectedText={g.id === selectedId ? selectedText : null} bust={doc.base.sex === 'female'} />
+              <TopView key={g.id} g={g} t={torso} rendered={rendered} shading={doc.settings.shading} selectedText={g.id === selectedId ? selectedText : null} bust={doc.base.sex === 'female'} view={doc.base.view} />
             );
           }
           const fit = fitOf(g);
@@ -492,7 +509,7 @@ export function Canvas() {
                 {doc.garments
                   .filter((g) => g.visible && g.type === 'top')
                   .map((g) => {
-                    const sh = topShape(torso, g.points, stiffOf(g.top));
+                    const sh = garmentShape(torso, g, doc.base.view);
                     return sh.hems.map((h, i) => (
                       <path key={`${g.id}${i}`} d={'M' + h.map((p) => `${p.x.toFixed(1)},${(p.y + 3).toFixed(1)}`).join(' L')} strokeWidth={3} opacity={0.12} />
                     ));

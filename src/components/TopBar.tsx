@@ -37,7 +37,7 @@ export function TopBar() {
         ))}
       </div>
       <div className="topbar-end">
-        {tab !== 'pattern' && (
+        {tab !== 'pattern' && tab !== 'flats' && (
           <>
             <div className="tabs small-tabs" role="group" aria-label="Render mode">
               {(['line', 'rendered'] as const).map((m) => (

@@ -5,11 +5,11 @@ import type { PaintStroke, SmudgeStroke, Stroke } from '../model/draw';
 import { computeFill, ctx2d, LH, LW, makeCanvas, PaintRun, RES, restoreBox, SmudgeRun, toPx, type Box } from '../draw/engine';
 import { layerCanvas, layerEntry, markCommitted, saveSnap, syncLayers } from '../draw/layers';
 import { MAX_ZOOM, MIN_ZOOM, zoomBy } from '../viewport';
+import { pen } from '../touch';
 
 let backup: HTMLCanvasElement | null = null;
 const getBackup = () => (backup ??= makeCanvas());
 /** Once a pen has touched the canvas, fingers only pan, zoom and tap (palm rejection). */
-let penSeen = false;
 
 interface Live {
   layerId: string;
@@ -400,8 +400,9 @@ export function DrawOverlay({ interactive }: { interactive: boolean }) {
       // not fatal
     }
     const st = useStore.getState();
-    if (e.pointerType === 'pen') penSeen = true;
+    if (e.pointerType === 'pen') pen.seen = true;
     if (e.pointerType === 'touch') {
+      if (live.current?.pen) return; // palm resting while the pencil draws
       touches.current.set(e.pointerId, local(e));
       if (touches.current.size >= 2) {
         const L = live.current;
@@ -411,7 +412,7 @@ export function DrawOverlay({ interactive }: { interactive: boolean }) {
         startGesture();
         return;
       }
-      if (penSeen || st.drawTool === 'hand') {
+      if (pen.seen || st.drawTool === 'hand') {
         pan.current = { sx: e.clientX, sy: e.clientY, vx: st.view.x, vy: st.view.y, id: e.pointerId };
         return;
       }

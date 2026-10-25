@@ -1,5 +1,5 @@
 import { rng } from './rng';
-import { findPoint, type Garment } from './garment';
+import { along, chainBetween, findPoint, type Garment } from './garment';
 
 export interface Stroke {
   d: string;
@@ -166,7 +166,7 @@ export function drapeFolds(g: Garment): { dark: Stroke[]; light: Stroke[] } {
     const K = [findPoint(p, ko), findPoint(p, ki)], H = [findPoint(p, ho), findPoint(p, hi)];
     for (let k = 0; k < count; k++) {
       const f = (k + 0.5 + (r() - 0.5) * 0.5) / count;
-      const top = { x: K[0].x + (K[1].x - K[0].x) * (0.3 + f * 0.4), y: K[0].y - 30 - r() * 50 };
+      const top = { x: K[0].x + (K[1].x - K[0].x) * (0.3 + f * 0.4), y: Math.max(K[0].y - 30 - r() * 50, findPoint(p, 'crotch').y - 6) };
       const bot = { x: H[0].x + (H[1].x - H[0].x) * f, y: Math.max(H[0].y, H[1].y) - 4 };
       const mid = { x: (top.x + bot.x) / 2 + (r() - 0.5) * 10, y: (top.y + bot.y) / 2 };
       const d = `M${n1(top.x)},${n1(top.y)} Q${n1(mid.x)},${n1(mid.y)} ${n1(bot.x)},${n1(bot.y)}`;
@@ -184,4 +184,47 @@ export function drapeFolds(g: Garment): { dark: Stroke[]; light: Stroke[] } {
     }
   }
   return { dark, light };
+}
+
+/** Soft vertical folds from the waist to the hem of a skirt, dark and light, and highlight strokes. */
+export function skirtFolds(g: Garment): { dark: Stroke[]; light: Stroke[]; hi: Stroke[] } {
+  const r = rng(g.id + ':skirt');
+  const dark: Stroke[] = [];
+  const light: Stroke[] = [];
+  const hi: Stroke[] = [];
+  const p = g.points;
+  const wl = findPoint(p, 'waistL'), wr = findPoint(p, 'waistR');
+  const waist = chainBetween(p, 'waistL', 'waistR') ?? [wl, wr];
+  const hem = chainBetween(p, 'hemR', 'hemL')?.slice().reverse() ?? [findPoint(p, 'hemL'), findPoint(p, 'hemR')];
+  const shape = g.skirt?.shape ?? 'A-line';
+  const count = shape === 'Pleated' ? 12 : shape === 'Pencil' ? 3 : shape === 'Wrap' ? 5 : 6;
+  const spread = shape === 'Pencil' ? 0.5 : 0.9;
+  for (let k = 0; k < count; k++) {
+    const u = 0.5 + ((k + 0.5) / count - 0.5) * spread + (r() - 0.5) * 0.02;
+    const a = along(waist, u), b = along(hem, u + (shape === 'Wrap' ? (u - 0.5) * 0.0 : 0));
+    const t0 = shape === 'Pencil' ? 0.45 : 0.15;
+    const top = { x: a.x + (b.x - a.x) * t0, y: a.y + (b.y - a.y) * t0 };
+    const bot = { x: b.x, y: b.y - 2 };
+    const mid = { x: (top.x + bot.x) / 2 + (r() - 0.5) * 4, y: (top.y + bot.y) / 2 };
+    const d = `M${n1(top.x)},${n1(top.y)} Q${n1(mid.x)},${n1(mid.y)} ${n1(bot.x)},${n1(bot.y)}`;
+    const w = shape === 'Pleated' ? 5 : 7 + r() * 5;
+    dark.push({ d, w, o: shape === 'Pleated' ? 0.2 : 0.13 + r() * 0.05 });
+    const dx = shape === 'Pleated' ? 3.5 : 6;
+    light.push({ d: `M${n1(top.x + dx)},${n1(top.y + 4)} Q${n1(mid.x + dx)},${n1(mid.y)} ${n1(bot.x + dx)},${n1(bot.y - 4)}`, w: w * 0.7, o: 0.11 });
+  }
+  // fabric pulling across the hips on a fitted skirt
+  if (shape === 'Pencil') {
+    for (const side of [0.12, 0.88]) {
+      const a = along(waist, side);
+      for (let k = 0; k < 2; k++) {
+        const sy = a.y + 22 + k * 14;
+        const dir = side < 0.5 ? 1 : -1;
+        dark.push({ d: `M${n1(a.x + (side < 0.5 ? 2 : -2))},${n1(sy)} Q${n1(a.x + dir * 14)},${n1(sy + 3)} ${n1(a.x + dir * 30)},${n1(sy + 12)}`, w: 3, o: 0.14 });
+      }
+    }
+  }
+  // a shine down the left of the front
+  const a = along(waist, 0.34), b = along(hem, 0.34);
+  hi.push({ d: `M${n1(a.x)},${n1(a.y + 20)} Q${n1((a.x + b.x) / 2 + 3)},${n1((a.y + b.y) / 2)} ${n1(b.x)},${n1(b.y - 10)}`, w: 4, o: 0.2 });
+  return { dark, light, hi };
 }

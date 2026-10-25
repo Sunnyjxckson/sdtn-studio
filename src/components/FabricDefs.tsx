@@ -4,6 +4,7 @@ import { mix } from '../model/color';
 
 export const fabricId = (g: Garment) => `fab-${g.id}`;
 export const overlayId = (g: Garment) => `ovl-${g.id}`;
+export const slubId = (g: Garment) => `slub-${g.id}`;
 
 /** Which kinds get a gradient overlay on top of the pattern. */
 export const hasOverlay = (g: Garment) => g.fabric === 'Denim' || g.fabric === 'Leather' || g.fabric === 'Satin';
@@ -30,15 +31,25 @@ export function FabricDefs({ g }: { g: Garment }) {
   const at = (f: number) => `${((top + span * f) | 0)}`;
   let tile: ReactNode;
   let overlay: ReactNode = null;
+  let extra: ReactNode = null;
 
   switch (g.fabric) {
     case 'Denim':
       tile = (
-        <Tile g={g} w={3} h={3}>
-          <rect width={3} height={3} fill={base} />
-          <path d="M-0.5,3.5 L3.5,-0.5" stroke={light} strokeOpacity={0.22} strokeWidth={0.6} />
-          <path d="M-0.5,2 L2,-0.5 M1,3.5 L3.5,1" stroke={dark} strokeOpacity={0.22} strokeWidth={0.45} />
+        <Tile g={g} w={2.4} h={2.4}>
+          <rect width={2.4} height={2.4} fill={base} />
+          {/* twill: diagonal ridges with a shadowed valley beside each */}
+          <path d="M-0.6,3 L3,-0.6" stroke={light} strokeOpacity={0.32} strokeWidth={0.55} />
+          <path d="M-0.6,1.8 L1.8,-0.6 M0.6,3 L3,0.6" stroke={dark} strokeOpacity={0.26} strokeWidth={0.4} />
+          <path d="M0.3,0 V2.4" stroke={dark} strokeOpacity={0.08} strokeWidth={0.4} />
         </Tile>
+      );
+      extra = (
+        <pattern id={slubId(g)} width={29} height={37} patternUnits="userSpaceOnUse" patternTransform={`scale(${g.fabricScale})`}>
+          <path d="M3,4 V13 M11.5,20 V27 M21,2 V8 M25,24 V35 M16.5,9 V14" stroke={light} strokeOpacity={0.2} strokeWidth={0.7} strokeLinecap="round" />
+          <path d="M7,15 V24 M18,26 V34 M27,10 V17" stroke={dark} strokeOpacity={0.16} strokeWidth={0.7} strokeLinecap="round" />
+          <path d="M0,18.5 H29 M0,5.5 H29" stroke={light} strokeOpacity={0.045} strokeWidth={0.8} />
+        </pattern>
       );
       overlay = (
         <linearGradient id={overlayId(g)} gradientUnits="userSpaceOnUse" x1={0} y1={top} x2={0} y2={hem}>
@@ -157,6 +168,7 @@ export function FabricDefs({ g }: { g: Garment }) {
     <>
       {tile}
       {overlay}
+      {extra}
     </>
   );
 }

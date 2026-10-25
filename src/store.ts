@@ -8,6 +8,17 @@ import type { PoseId } from './model/figure';
 import {
   applyMeasure,
   buildPoints,
+  buildShortsPoints,
+  buildSkirtPoints,
+  createShorts,
+  createSkirt,
+  SHORTS_INSEAM,
+  SKIRT_LEN,
+  shortsName as shortsLabel,
+  type HemKind,
+  type ShortsLength,
+  type SkirtLength,
+  type SkirtShape,
   type FabricKind,
   type Measure,
   createJeans,
@@ -26,7 +37,7 @@ import {
   type WashName,
 } from './model/garment';
 import { placeOnCroquis } from './model/placement';
-import { buildTopPoints, type TopOpts } from './model/top';
+import { BLOCK_LOOK, buildTopPoints, topName, type TopOpts } from './model/top';
 import { newId } from './model/garment';
 import { defaultStyle, type VectorDoc, type VStyle, findItem } from './model/vector';
 import { brushById, MAX_DRAW_LAYERS, newDrawLayer, type BrushId, type DrawLayer, type Drawing, type Stroke } from './model/draw';
@@ -183,6 +194,11 @@ interface State {
   setNoteText: (id: string, t: string) => void;
   removeNote: (id: string) => void;
   addJeans: (fit: Fit) => void;
+  addShorts: (length: ShortsLength) => void;
+  addSkirt: (shape: SkirtShape, length?: SkirtLength) => void;
+  setShortsLength: (id: string, length: ShortsLength) => void;
+  setHem: (id: string, hem: HemKind) => void;
+  setSkirt: (id: string, patch: { shape?: SkirtShape; length?: SkirtLength }) => void;
   addTop: (o: TopOpts) => void;
   setTop: (id: string, patch: Partial<TopOpts>) => void;
   removeGarment: (id: string) => void;
@@ -503,6 +519,59 @@ export const useStore = create<State>()(
           s.tool = 'move';
         });
       },
+      addShorts: (length) => {
+        const g = createShorts(length);
+        const { sex, view } = get().doc.base;
+        g.transform = placeOnCroquis(g, sex, view);
+        get().checkpoint();
+        set((s) => {
+          s.doc.garments.push(g);
+          s.selectedId = g.id;
+          s.selectedText = null;
+          s.tool = 'move';
+        });
+      },
+      addSkirt: (shape, length = 'Mini') => {
+        const g = createSkirt(shape, length);
+        const { sex, view } = get().doc.base;
+        g.transform = placeOnCroquis(g, sex, view);
+        get().checkpoint();
+        set((s) => {
+          s.doc.garments.push(g);
+          s.selectedId = g.id;
+          s.selectedText = null;
+          s.tool = 'move';
+        });
+      },
+      setShortsLength: (id, length) =>
+        step((d) => {
+          const g = findG(d, id);
+          if (!g || !g.shorts) return;
+          g.shorts = { length, inseam: SHORTS_INSEAM[length] };
+          g.points = buildShortsPoints(g.fit, g.rise, g.shorts.inseam);
+          g.name = shortsLabel(length);
+        }),
+      setHem: (id, hem) =>
+        step((d) => {
+          const g = findG(d, id);
+          if (g) g.parts.hem = hem;
+        }),
+      setSkirt: (id, patch) =>
+        step((d) => {
+          const g = findG(d, id);
+          if (!g || !g.skirt) return;
+          if (patch.shape) {
+            g.skirt.shape = patch.shape;
+            g.skirt.sweep = null;
+            g.name = `${patch.shape} skirt`;
+            g.block = patch.shape.toLowerCase();
+          }
+          if (patch.length) {
+            g.skirt.length = patch.length;
+            g.skirt.len = SKIRT_LEN[patch.length];
+          }
+          g.points = buildSkirtPoints(g.skirt);
+        }),
       addTop: (o) => {
         const g = createTop(o);
         get().checkpoint();
@@ -520,9 +589,12 @@ export const useStore = create<State>()(
           Object.assign(g.top, patch);
           if (patch.length && patch.tuck === undefined) g.top.tuck = false;
           g.points = buildTopPoints(g.top);
-          const n = g.top.block === 'Tank' ? 'tank' : g.top.block === 'Tee' ? 'tee' : 'long sleeve';
-          g.name = `${g.top.fit} ${n}`;
-          if (patch.block) g.fabric = patch.block === 'Tank' ? 'Rib' : 'Jersey';
+          g.name = topName(g.top);
+          if (patch.block) {
+            const look = BLOCK_LOOK[patch.block];
+            g.fabric = look?.fabric ?? (patch.block === 'Tank' ? 'Rib' : 'Jersey');
+            if (look) g.wash = look.wash;
+          }
         }),
       removeGarment: (id) => {
         get().checkpoint();
@@ -555,6 +627,10 @@ export const useStore = create<State>()(
           const g = findG(d, id);
           if (!g) return;
           g.fit = fit;
+          if (g.type === 'shorts' && g.shorts) {
+            g.points = buildShortsPoints(fit, g.rise, g.shorts.inseam);
+            return;
+          }
           g.points = buildPoints(fit, g.rise);
           g.name = `${fit} jeans`;
         }),
@@ -563,7 +639,7 @@ export const useStore = create<State>()(
           const g = findG(d, id);
           if (!g) return;
           g.rise = rise;
-          g.points = buildPoints(g.fit, rise);
+          g.points = g.type === 'shorts' && g.shorts ? buildShortsPoints(g.fit, rise, g.shorts.inseam) : buildPoints(g.fit, rise);
         }),
       setWaist: (id, w) =>
         step((d) => {
