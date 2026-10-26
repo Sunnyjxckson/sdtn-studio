@@ -30,6 +30,7 @@ import { ArtboardsPanel } from './extra/ArtboardsPanel';
 import { EffectsPanel } from './extra/EffectsPanel';
 import { EnvelopePanel } from './extra/EnvelopePanel';
 import { SymbolsPanel } from './extra/SymbolsPanel';
+import { BlanksPanel } from './extra/BlanksPanel';
 import { FilePanel } from './extra/FilePanel';
 import { GradientPanel } from './extra/GradientPanel';
 import { PathfinderPanel } from './extra/PathfinderPanel';
@@ -285,6 +286,7 @@ export function VectorLeftPanel() {
     <aside className="panel left">
       <LayersPanel />
       <ArtboardsPanel />
+      <BlanksPanel />
       <SymbolsPanel />
       <FilePanel />
     </aside>

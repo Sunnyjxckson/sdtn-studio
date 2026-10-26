@@ -3,6 +3,7 @@
 
 import type { FlatAnchor, FlatShape } from './flats';
 import type { Garment } from './garment';
+import { ribHemOn, streetParts, styleParts } from './flatsStreet';
 import { dressTopOf, silhouetteOf, sleeveKindOf, type TopOpts } from './top';
 
 export interface V {
@@ -26,6 +27,8 @@ export interface BlockParts {
   extent: V[];
   noHemStitch?: boolean;
   noSleeveStitch?: boolean;
+  /** The block draws its own sleeve seam (raglan), so the set-in armhole seam is left out. */
+  noArmhole?: boolean;
 }
 
 export interface TopCtx {
@@ -43,13 +46,13 @@ export interface TopCtx {
   neck: (t: number) => V;
 }
 
-const f1 = (n: number) => n.toFixed(1);
-const P = (p: V) => `${f1(p.x)},${f1(p.y)}`;
-const poly = (pts: V[], closed = false) => 'M' + pts.map(P).join(' L') + (closed ? ' Z' : '');
-const lerp = (a: V, b: V, k: number): V => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
-const circle = (c: V, r: number) => `M${f1(c.x - r)},${f1(c.y)} a${r},${r} 0 1,0 ${2 * r},0 a${r},${r} 0 1,0 ${-2 * r},0 Z`;
+export const f1 = (n: number) => n.toFixed(1);
+export const P = (p: V) => `${f1(p.x)},${f1(p.y)}`;
+export const poly = (pts: V[], closed = false) => 'M' + pts.map(P).join(' L') + (closed ? ' Z' : '');
+export const lerp = (a: V, b: V, k: number): V => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
+export const circle = (c: V, r: number) => `M${f1(c.x - r)},${f1(c.y)} a${r},${r} 0 1,0 ${2 * r},0 a${r},${r} 0 1,0 ${-2 * r},0 Z`;
 /** Smooth curve through points (Catmull Rom to bezier). */
-function curve(pts: V[], closed = false): string {
+export function curve(pts: V[], closed = false): string {
   if (pts.length < 3) return poly(pts, closed);
   const n = pts.length;
   const g = (i: number) => (closed ? pts[(i + n) % n] : pts[Math.max(0, Math.min(n - 1, i))]);
@@ -64,10 +67,10 @@ function curve(pts: V[], closed = false): string {
   return d + (closed ? ' Z' : '');
 }
 
-const empty = (): BlockParts => ({ shapes: [], behind: [], over: [], anchors: [], drop: [], rename: {}, extent: [] });
+export const empty = (): BlockParts => ({ shapes: [], behind: [], over: [], anchors: [], drop: [], rename: {}, extent: [] });
 
 /** Zip: a line with teeth beside it, and a pull at the start. */
-function zip(pts: V[], pull = true): FlatShape[] {
+export function zip(pts: V[], pull = true): FlatShape[] {
   const out: FlatShape[] = [
     { d: curve(pts), k: 'line' },
     { d: curve(pts), k: 'stitch', t: [2.2, 0] },
@@ -77,7 +80,7 @@ function zip(pts: V[], pull = true): FlatShape[] {
 }
 
 /** Short rib ticks between two parallel polylines. */
-function ticks(a: V[], b: V[], step: number): string {
+export function ticks(a: V[], b: V[], step: number): string {
   let d = '';
   for (let i = 0; i < a.length; i += step) d += `M${P(a[i])} L${P(b[i])} `;
   return d;
@@ -85,7 +88,8 @@ function ticks(a: V[], b: V[], step: number): string {
 
 // ---------- hoodie ----------
 
-function hoodie(c: TopCtx, zipped = false): BlockParts {
+export interface HoodieOpt { noRib?: boolean; noCuffs?: boolean; noPocket?: boolean }
+export function hoodie(c: TopCtx, zipped = false, opt: HoodieOpt = {}): BlockParts {
   const r = empty();
   const { T, at, hemY, hemV, back } = c;
   const nL = at('neckL') as V, nR = at('neckR') as V;
@@ -148,6 +152,7 @@ function hoodie(c: TopCtx, zipped = false): BlockParts {
       const cord = [{ x: x0, y: y0 }, { x: x0 + s * 2, y: y0 + 28 }, { x: x0 - s * 1, y: y0 + 56 }, { x: x0 + s * 2, y: y0 + 82 }];
       r.shapes.push({ d: circle(cord[0], 1.7), k: 'line' }, { d: curve(cord), k: 'line' }, { d: `M${f1(cord[3].x)},${f1(cord[3].y)} l${f1(s * 0.4)},9`, k: 'line' });
     }
+    if (!opt.noPocket) {
     const vt = hemV - 0.52, vb = hemV - 0.14;
     const pw = (v: number) => 0.44 + ((v - vt) / (vb - vt)) * 0.16;
     const pocket = [T(-pw(vt), vt), T(pw(vt), vt), T(pw(vb), vb), T(-pw(vb), vb)];
@@ -162,8 +167,10 @@ function hoodie(c: TopCtx, zipped = false): BlockParts {
       { key: 'cord', label: 'Drawcords', desc: 'Flat drawcords with metal tips, 2 eyelets at the neck', x: 150 + 13, y: y0 + 40 },
       { key: 'kanga', label: 'Kangaroo pocket', desc: 'Patch pocket with angled hand openings, topstitched', x: pm.x + 22, y: pm.y },
     );
+    }
   }
 
+  if (!opt.noRib) {
   // rib hem
   const bh = wide ? 15 : 13;
   const edge = (y: number): V[] => {
@@ -185,8 +192,9 @@ function hoodie(c: TopCtx, zipped = false): BlockParts {
   }
   r.anchors.push({ key: 'ribhem', label: 'Rib hem', desc: `Body hem, 2x2 rib band, ${f1(bh / 9.4)} in`, x: 150 + 62, y: hemY - bh / 2 });
 
+  }
   // rib cuffs
-  for (const K of ['L', 'R'] as const) {
+  for (const K of opt.noCuffs ? [] : (['L', 'R'] as const)) {
     const so = at('slO' + K) as V, si = at('slI' + K) as V;
     const u = c.dir(K);
     const L = 26;
@@ -361,13 +369,13 @@ function dressLenLabel(o: TopOpts): string {
 
 // ---------- shared pieces for the newer blocks ----------
 
-const sleeveOf2 = (c: TopCtx, K: 'L' | 'R') => {
+export const sleeveOf2 = (c: TopCtx, K: 'L' | 'R') => {
   const so = c.at('slO' + K) as V, si = c.at('slI' + K) as V;
   return { so, si, sh: c.at('sh' + K) as V, ar: c.at('arm' + K) as V, u: c.dir(K) };
 };
 
 /** Rib band across the body hem. */
-function ribHem(c: TopCtx, r: BlockParts, bh: number, label = 'Rib hem') {
+export function ribHem(c: TopCtx, r: BlockParts, bh: number, label = 'Rib hem') {
   const { at, hemY } = c;
   const l = at('hemL') as V, rr = at('hemR') as V;
   const edge = (y: number): V[] => [l, rr].map((p, i) => ({ x: p.x + (i ? 3 : -3), y }));
@@ -385,7 +393,7 @@ function ribHem(c: TopCtx, r: BlockParts, bh: number, label = 'Rib hem') {
 }
 
 /** Rib or plain band across each sleeve end. */
-function sleeveBand(c: TopCtx, r: BlockParts, L: number, key: string, label: string, desc: string, rib = true) {
+export function sleeveBand(c: TopCtx, r: BlockParts, L: number, key: string, label: string, desc: string, rib = true) {
   for (const K of ['L', 'R'] as const) {
     const { so, si, u } = sleeveOf2(c, K);
     const a = { x: so.x - u.x * L, y: so.y - u.y * L }, b = { x: si.x - u.x * L, y: si.y - u.y * L };
@@ -403,7 +411,7 @@ function sleeveBand(c: TopCtx, r: BlockParts, L: number, key: string, label: str
 }
 
 /** Rib band around the neck, following the neckline curve. */
-function ribNeck(c: TopCtx, r: BlockParts, w: number, label: string, desc: string) {
+export function ribNeck(c: TopCtx, r: BlockParts, w: number, label: string, desc: string) {
   const pts: V[] = [], inner: V[] = [];
   for (let i = 0; i <= 12; i++) {
     const p = c.neck(i / 12);
@@ -420,7 +428,7 @@ function ribNeck(c: TopCtx, r: BlockParts, w: number, label: string, desc: strin
 }
 
 /** Folded shirt collar: stand behind the neck and two flaps over the body. */
-function shirtCollar(c: TopCtx, r: BlockParts, size: number, pointed: boolean) {
+export function shirtCollar(c: TopCtx, r: BlockParts, size: number, pointed: boolean) {
   const nL = c.at('neckL') as V, nR = c.at('neckR') as V, nf = c.at('neckF') as V;
   const top = nL.y - 8;
   r.behind.push({ d: `M${f1(nL.x - 1)},${f1(nL.y + 1)} L${f1(nL.x - 2)},${f1(top)} Q150,${f1(top - 8)} ${f1(nR.x + 2)},${f1(top)} L${f1(nR.x + 1)},${f1(nR.y + 1)} Z`, k: 'edge', fill: true });
@@ -438,7 +446,7 @@ function shirtCollar(c: TopCtx, r: BlockParts, size: number, pointed: boolean) {
 }
 
 /** A placket down the centre front with buttons. */
-function placket(_c: TopCtx, r: BlockParts, y0: number, y1: number, nBut: number, w = 6, tonal = true) {
+export function placket(_c: TopCtx, r: BlockParts, y0: number, y1: number, nBut: number, w = 6, tonal = true) {
   r.shapes.push(
     { d: `M${f1(150 - w)},${f1(y0)} L${f1(150 - w)},${f1(y1)}`, k: 'seam' },
     { d: `M${f1(150 + w)},${f1(y0)} L${f1(150 + w)},${f1(y1)}`, k: 'seam' },
@@ -453,7 +461,7 @@ function placket(_c: TopCtx, r: BlockParts, y0: number, y1: number, nBut: number
 }
 
 /** Slanted welt or flap pocket between two points, with a flap if asked. */
-function pocketAt(r: BlockParts, a: V, b: V, flap: number, k: 'flap' | 'welt') {
+export function pocketAt(r: BlockParts, a: V, b: V, flap: number, k: 'flap' | 'welt') {
   const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
   const nx = -dy / L, ny = dx / L;
   const q = (p: V, d: number): V => ({ x: p.x + nx * d, y: p.y + ny * d });
@@ -541,14 +549,14 @@ function polo(c: TopCtx): BlockParts {
 
 // ---------- sweatshirt ----------
 
-function sweatshirt(c: TopCtx): BlockParts {
+export function sweatshirt(c: TopCtx): BlockParts {
   const r = empty();
   const wide = c.o.fit === 'Oversized';
   r.noHemStitch = true;
   r.noSleeveStitch = true;
   r.drop.push('sleeve', 'hem');
   ribNeck(c, r, 8, 'Rib collar', 'Crew neck, 1x1 rib collar, topstitched');
-  ribHem(c, r, wide ? 15 : 13);
+  if (ribHemOn(c.o)) ribHem(c, r, wide ? 15 : 13);
   sleeveBand(c, r, 26, 'ribcuff', 'Rib cuffs', 'Sleeve ends in 2x2 rib cuffs, 3 in');
   const { T, hemV, back } = c;
   if (!back) {
@@ -848,19 +856,19 @@ function blazer(c: TopCtx): BlockParts {
 export function blockParts(c: TopCtx): BlockParts | null {
   switch (c.o.block) {
     case 'Hoodie':
-      return hoodie(c);
+      return styleParts(c, hoodie(c, false, { noRib: !ribHemOn(c.o) }));
     case 'Moto jacket':
       return moto(c);
     case 'Dress':
       return dress(c);
     case 'Zip hoodie':
-      return hoodie(c, true);
+      return styleParts(c, hoodie(c, true, { noRib: !ribHemOn(c.o) }));
     case 'Button-up':
       return buttonUp(c);
     case 'Polo':
       return polo(c);
     case 'Sweatshirt':
-      return sweatshirt(c);
+      return styleParts(c, sweatshirt(c));
     case 'Bomber':
       return bomber(c);
     case 'Trucker':
@@ -871,8 +879,10 @@ export function blockParts(c: TopCtx): BlockParts | null {
       return trench(c);
     case 'Blazer':
       return blazer(c);
+    case 'Mock neck': case 'Quarter zip': case 'Anorak': case 'Work jacket': case 'Coach jacket':
+      return streetParts(c);
     default:
-      return null;
+      return styleParts(c);
   }
 }
 

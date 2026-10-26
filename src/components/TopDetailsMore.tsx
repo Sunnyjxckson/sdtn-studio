@@ -4,15 +4,16 @@
 import type { ReactNode } from 'react';
 import { smooth, type Vec } from '../model/figure';
 import { mix } from '../model/color';
-import { coatHemV, cuffedOf, sleeveOf, uv } from '../model/top';
+import { coatHemV, cuffedOf, hasStyleOptions, hemOf, sleeveOf, uv } from '../model/top';
+import { streetFront } from './TopDetailsStreet';
 import { bodyHem, Cuff, f1, helpers, hemBand, line, RibBand, sleeveEdge, Stitch, Zip, type DetailCtx } from './topParts';
 
-const sw = (c: DetailCtx) => (c.rendered ? 0.9 : 1.4);
-const hiOp = (c: DetailCtx) => (c.rendered ? (c.dark ? 0.14 : 0.1) : 0);
-const pd = (pts: Vec[]) => smooth(pts);
+export const sw = (c: DetailCtx) => (c.rendered ? 0.9 : 1.4);
+export const hiOp = (c: DetailCtx) => (c.rendered ? (c.dark ? 0.14 : 0.1) : 0);
+export const pd = (pts: Vec[]) => smooth(pts);
 
 /** Closed filled panel with an outline and a soft highlight. */
-function Panel({ pts, c, round = false, fill, hi = 1 }: { pts: Vec[]; c: DetailCtx; round?: boolean; fill?: string; hi?: number }) {
+export function Panel({ pts, c, round = false, fill, hi = 1 }: { pts: Vec[]; c: DetailCtx; round?: boolean; fill?: string; hi?: number }) {
   const d = round ? smooth(pts, true) : line(pts, true);
   return (
     <g pointerEvents="none">
@@ -23,13 +24,13 @@ function Panel({ pts, c, round = false, fill, hi = 1 }: { pts: Vec[]; c: DetailC
 }
 
 /** A seam: an open curve in the outline colour. */
-function Seam({ pts, c, o = 0.75, w = 0.8, straight = false }: { pts: Vec[]; c: DetailCtx; o?: number; w?: number; straight?: boolean }) {
+export function Seam({ pts, c, o = 0.75, w = 0.8, straight = false }: { pts: Vec[]; c: DetailCtx; o?: number; w?: number; straight?: boolean }) {
   return <path d={straight ? line(pts) : pd(pts)} fill="none" stroke={c.outline} strokeWidth={w} opacity={o} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />;
 }
 
-const shift = (pts: Vec[], dx: number, dy: number): Vec[] => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+export const shift = (pts: Vec[], dx: number, dy: number): Vec[] => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
 
-function Btn({ p, c, r = 1.8, metal = false }: { p: Vec; c: DetailCtx; r?: number; metal?: boolean }) {
+export function Btn({ p, c, r = 1.8, metal = false }: { p: Vec; c: DetailCtx; r?: number; metal?: boolean }) {
   const { ink } = helpers(c);
   const body = metal ? '#aaa69c' : mix(c.base, c.dark ? '#ffffff' : '#000000', c.dark ? 0.32 : 0.22);
   return (
@@ -48,7 +49,7 @@ function Btn({ p, c, r = 1.8, metal = false }: { p: Vec; c: DetailCtx; r?: numbe
 }
 
 /** Buttons down a line at u, between two heights. */
-function ButtonRun({ c, u, v0, v1, n, r = 1.8, metal = false }: { c: DetailCtx; u: number; v0: number; v1: number; n: number; r?: number; metal?: boolean }) {
+export function ButtonRun({ c, u, v0, v1, n, r = 1.8, metal = false }: { c: DetailCtx; u: number; v0: number; v1: number; n: number; r?: number; metal?: boolean }) {
   const { F } = helpers(c);
   const out: ReactNode[] = [];
   for (let k = 0; k < n; k++) out.push(<Btn key={k} p={F(u, v0 + ((v1 - v0) * k) / Math.max(1, n - 1))} c={c} r={r} metal={metal} />);
@@ -56,7 +57,7 @@ function ButtonRun({ c, u, v0, v1, n, r = 1.8, metal = false }: { c: DetailCtx; 
 }
 
 /** Straight placket: two edge lines and a topstitch row down the centre front. */
-function Placket({ c, v0, v1, w = 0.045, stitch = true }: { c: DetailCtx; v0: number; v1: number; w?: number; stitch?: boolean }) {
+export function Placket({ c, v0, v1, w = 0.045, stitch = true }: { c: DetailCtx; v0: number; v1: number; w?: number; stitch?: boolean }) {
   const { F } = helpers(c);
   const col = (u: number) => [F(u, v0), F(u, (v0 + v1) / 2), F(u, v1)];
   return (
@@ -70,7 +71,7 @@ function Placket({ c, v0, v1, w = 0.045, stitch = true }: { c: DetailCtx; v0: nu
 }
 
 /** Shirt collar from the front: two leaves folding down, with the stand behind the neck. */
-function CollarFront({ c, v0, leaf = 1, spread = 0, round = false }: { c: DetailCtx; v0: number; leaf?: number; spread?: number; round?: boolean }): ReactNode {
+export function CollarFront({ c, v0, leaf = 1, spread = 0, round = false }: { c: DetailCtx; v0: number; leaf?: number; spread?: number; round?: boolean }): ReactNode {
   const { F, U, ink } = helpers(c);
   const out: ReactNode[] = [];
   for (const s of [-1, 1] as const) {
@@ -96,7 +97,7 @@ function CollarFront({ c, v0, leaf = 1, spread = 0, round = false }: { c: Detail
 }
 
 /** Collar stand and fold seen from behind the neck. */
-function CollarBack({ c, h = 12, fold = true }: { c: DetailCtx; h?: number; fold?: boolean }): ReactNode {
+export function CollarBack({ c, h = 12, fold = true }: { c: DetailCtx; h?: number; fold?: boolean }): ReactNode {
   const { F, U } = helpers(c);
   const top = [U(-0.35, 2), U(-0.31, h * 0.8), U(0, h), U(0.31, h * 0.8), U(0.35, 2)];
   const bot = [F(0.31, 0.05), F(0, 0.085), F(-0.31, 0.05)];
@@ -110,7 +111,7 @@ function CollarBack({ c, h = 12, fold = true }: { c: DetailCtx; h?: number; fold
 }
 
 /** Welt or flap pocket pointing down. */
-function FlapPocket({ c, u0, u1, v, h, button = true, metal = false }: { c: DetailCtx; u0: number; u1: number; v: number; h: number; button?: boolean; metal?: boolean }): ReactNode {
+export function FlapPocket({ c, u0, u1, v, h, button = true, metal = false }: { c: DetailCtx; u0: number; u1: number; v: number; h: number; button?: boolean; metal?: boolean }): ReactNode {
   const { F } = helpers(c);
   const um = (u0 + u1) / 2;
   const pts = [F(u0, v), F(u1, v), F(u1, v + h), F(um, v + h + h * 0.22), F(u0, v + h)];
@@ -126,7 +127,7 @@ function FlapPocket({ c, u0, u1, v, h, button = true, metal = false }: { c: Deta
 }
 
 /** Sleeve cuff with a button, in arm space. */
-function ButtonCuff({ c, len, w = 0.22, n = 1, metal = false }: { c: DetailCtx; len: number; w?: number; n?: number; metal?: boolean }): ReactNode {
+export function ButtonCuff({ c, len, w = 0.22, n = 1, metal = false }: { c: DetailCtx; len: number; w?: number; n?: number; metal?: boolean }): ReactNode {
   const { A } = helpers(c);
   const o = c.g.top!;
   const cuffO = cuffedOf(o) ?? 1.1;
@@ -154,13 +155,13 @@ function ButtonCuff({ c, len, w = 0.22, n = 1, metal = false }: { c: DetailCtx; 
 }
 
 /** Soft hem stitch. */
-function HemStitch({ c, dy = -3, o = 0.55 }: { c: DetailCtx; dy?: number; o?: number }): ReactNode {
+export function HemStitch({ c, dy = -3, o = 0.55 }: { c: DetailCtx; dy?: number; o?: number }): ReactNode {
   const hem = bodyHem(c.shape);
   return hem.length > 2 ? <Stitch d={line(hem.map((p) => ({ x: p.x, y: p.y + dy })))} c={c} o={o} /> : null;
 }
 
 /** Knit collar standing round the neck, drawn as a ring. */
-function RibCollar({ c, h = 12, stripes = false }: { c: DetailCtx; h?: number; stripes?: boolean }): ReactNode {
+export function RibCollar({ c, h = 12, stripes = false }: { c: DetailCtx; h?: number; stripes?: boolean }): ReactNode {
   const { F, U, ink } = helpers(c);
   const trim = c.rendered ? mix(c.base, c.dark ? '#ffffff' : '#000000', c.dark ? 0.1 : 0.07) : c.fill;
   const back = c.view === 'back';
@@ -275,7 +276,7 @@ const F2 = (c: DetailCtx, u: number, v: number): Vec => helpers(c).F(u, v);
 
 // ---------- crewneck sweatshirt ----------
 
-function ribNeck(c: DetailCtx, w = 6.5): ReactNode {
+export function ribNeck(c: DetailCtx, w = 6.5): ReactNode {
   const { F, ink } = helpers(c);
   const nl = c.shape.neckline;
   if (nl.length < 3) return null;
@@ -296,11 +297,12 @@ function ribNeck(c: DetailCtx, w = 6.5): ReactNode {
 }
 
 /** Rib hem band and rib cuffs shared by the sweatshirt, bomber and zip hoodie. */
-function bandsAndCuffs(c: DetailCtx, bandH: number, cuffLen = 0.27, cuffShort = false): ReactNode[] {
+export function bandsAndCuffs(c: DetailCtx, bandH: number, cuffLen = 0.27, cuffShort = false): ReactNode[] {
   const o = c.g.top!;
   const out: ReactNode[] = [];
   const band = hemBand(c.shape, bandH);
-  if (band.poly.length)
+  const plain = hasStyleOptions(o) && hemOf(o) !== 'Rib band';
+  if (band.poly.length && !plain)
     out.push(
       <g key="band" clipPath={`url(#tclip-${c.g.id})`}>
         <RibBand {...band} c={c} id="hem" />
@@ -737,6 +739,7 @@ export function moreFront(c: DetailCtx): ReactNode {
     case 'Puffer': return pufferFront(c);
     case 'Trench': return trenchFront(c);
     case 'Blazer': return blazerFront(c);
+    case 'Mock neck': case 'Quarter zip': case 'Work jacket': case 'Coach jacket': return streetFront(c);
     default: return null;
   }
 }

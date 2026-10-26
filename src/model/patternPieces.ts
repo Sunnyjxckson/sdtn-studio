@@ -1,7 +1,7 @@
 // Pattern piece generators. Each piece is a polygon in local inches (y runs down) plus its marks.
 import { bandHeight, findPoint, PX_IN_H, PX_IN_V, type Garment } from './garment';
 import type { TorsoProfile } from './figure';
-import { uv } from './top';
+import { hasStyleOptions, hemOf, sleeveStyleOf, uv } from './top';
 import { cubic, dedupe, pathLen, quad, bbox, type P } from './patternGeo';
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'] as const;
@@ -615,8 +615,11 @@ function topPieces(d: TopDims, g: Garment): RawPiece[] {
 
   // everything else: tee family, shirts, sweats and the open-front jackets
   const cfg = styleOf(o);
-  const rib = cfg.rib;
-  const bodyLen = rib ? d.len - bandH : d.len;
+  const teeFam = o.block === 'Tee' || o.block === 'Long sleeve' || o.block === 'Mock neck';
+  // hem band: rib on hoodies, sweats and the work jacket (self fabric when straight), opt in on tees
+  const hemRib = o.block === 'Work jacket' ? true : o.block === 'Coach jacket' || o.block === 'Anorak' ? false : cfg.rib ? (hasStyleOptions(o) ? hemOf(o) === 'Rib band' : true) : teeFam && hemOf(o) === 'Rib band';
+  const rib = cuffRibOf(o, cfg);
+  const bodyLen = hemRib ? d.len - bandH : d.len;
   const mkBody = (back: boolean) => bodice(d, { back, len: bodyLen, hem: d.hem, strapped: d.strapped });
   const nf = neckCurve(d.neckHalf, d.dropF, d.vee), nb = neckCurve(d.neckHalf, d.dropB, false);
   const neckLen = (pathLen(nf) + pathLen(nb)) * 2;
@@ -638,8 +641,8 @@ function topPieces(d: TopDims, g: Garment): RawPiece[] {
       name,
       cut,
       mirror,
-      hemSA: rib ? undefined : 1,
-      saFn: (a, b) => (!rib && Math.abs(a[1] - b[1]) < 0.02 && a[1] > f.bb.y1 - 0.05 ? 1 : zip(a, b)),
+      hemSA: hemRib ? undefined : 1,
+      saFn: (a, b) => (!hemRib && Math.abs(a[1] - b[1]) < 0.02 && a[1] > f.bb.y1 - 0.05 ? 1 : zip(a, b)),
       poly: dedupe(f.pts),
       grain: { x: d.chest / 8 },
       notches: nt,
@@ -649,13 +652,13 @@ function topPieces(d: TopDims, g: Garment): RawPiece[] {
     if (ovl > 0) out.push(front('front-l', 'Left front (overlap)', mkFront(true), 1, false), front('front-r', 'Right front', mkFront(false), 1, false));
     else out.push(front('front', 'Front', mkFront(false), 2, true));
     const b = mkBody(true);
-    out.push({ id: 'back', name: 'Back', cut: 1, fold: true, hemSA: rib ? undefined : 1, poly: dedupe(b.poly), grain: { x: d.chest / 8 }, notches: [[b.ux, d.armY], [b.ux, d.armY + 0.4], nt[1]], label: [labF[0], labF[1] + 0.2] });
+    out.push({ id: 'back', name: 'Back', cut: 1, fold: true, hemSA: hemRib ? undefined : 1, poly: dedupe(b.poly), grain: { x: d.chest / 8 }, notches: [[b.ux, d.armY], [b.ux, d.armY + 0.4], nt[1]], label: [labF[0], labF[1] + 0.2] });
     if (d.sleeveLen > 0) {
-      const cuff = rib ? bandH : o.block === 'Button-up' ? 1.75 : 0;
+      const cuff = rib ? bandH : o.block === 'Button-up' || o.block === 'Work jacket' ? 1.75 : 0;
       const hemW = o.block === 'Moto jacket' ? Math.max(d.sleeveHem, 4.2) : d.sleeveHem;
       out.push(sleevePiece(d, d.sleeveLen - cuff, hemW, cuff ? 0.375 : 1));
       if (rib) out.push(band('cuff', 'Rib cuff', Math.max(6, d.sleeveHem * 2 * 0.78), bandH * 2, 2, ['rib, fold in half'], true));
-      else if (o.block === 'Button-up') out.push(band('cuff', 'Cuff', d.sleeveHem + 1.5, 3.5, 4, ['interface half, button at the end']));
+      else if (o.block === 'Button-up' || o.block === 'Work jacket') out.push(band('cuff', 'Cuff', d.sleeveHem + 1.5, 3.5, 4, ['interface half, button at the end']));
     }
     const vl = Math.hypot(d.neckHalf, d.dropF) + 1.4, bk = pathLen(nb);
     const Lh = Math.max(neckLen / 2 + ovl * 0.4, vl + bk + 0.4);
@@ -671,7 +674,8 @@ function topPieces(d: TopDims, g: Garment): RawPiece[] {
       out.push(band('collar', cfg.rib ? 'Rib collar' : 'Stand collar', Math.max(10, neckLen * 0.82 / 2), 2 * (cfg.rib ? 1.5 : 1.25), cfg.rib ? 2 : 2, cfg.rib ? ['rib, fold in half'] : ['interface, topstitch'], true));
     }
     if (cfg.hood || (o.block === 'Puffer' && o.hood)) out.push(hoodPiece(d, neckLen / 2));
-    if (rib) out.push(band('hemband', 'Rib hem band', d.hem * 0.8 / 2, bandH * 2, 2, ['rib, front and back'], true));
+    if (hemRib && o.block === 'Work jacket' && hemOf(o) !== 'Rib band') out.push(band('hemband', 'Hem band', d.hem / 2 + 1, bandH * 2, 2, ['self fabric, interface, front and back']));
+    else if (hemRib) out.push(band('hemband', 'Rib hem band', d.hem * 0.8 / 2, bandH * 2, 2, ['rib, front and back'], true));
     if (cfg.belt) out.push(band('belt', 'Belt', (d.waist + 4) / 2, o.block === 'Trench' ? 4 : 3.5, 2, ['join at centre back']));
     if (o.block === 'Trench') out.push({ id: 'epaulet', name: 'Epaulet', cut: 2, poly: [[0, 0], [2.4, 0], [2.4, 6], [1.2, 6.8], [0, 6]], grain: { x: 1.2 }, notches: [], label: [1.2, 3] });
     if (cfg.pocket === 'flap') {
@@ -686,8 +690,8 @@ function topPieces(d: TopDims, g: Garment): RawPiece[] {
   }
 
   const f = mkBody(false), bk = mkBody(true);
-  out.push({ id: 'front', name: 'Front', cut: 1, fold: true, hemSA: rib ? undefined : 1, poly: dedupe(f.poly), grain: { x: d.chest / 8 }, notches: [[f.ux, d.armY], nt[1]], label: labF });
-  out.push({ id: 'back', name: 'Back', cut: 1, fold: true, hemSA: rib ? undefined : 1, poly: dedupe(bk.poly), grain: { x: d.chest / 8 }, notches: [[bk.ux, d.armY], [bk.ux, d.armY + 0.4], nt[1]], label: [labF[0], labF[1] + 0.2] });
+  out.push({ id: 'front', name: 'Front', cut: 1, fold: true, hemSA: hemRib ? undefined : 1, poly: dedupe(f.poly), grain: { x: d.chest / 8 }, notches: [[f.ux, d.armY], nt[1]], label: labF });
+  out.push({ id: 'back', name: 'Back', cut: 1, fold: true, hemSA: hemRib ? undefined : 1, poly: dedupe(bk.poly), grain: { x: d.chest / 8 }, notches: [[bk.ux, d.armY], [bk.ux, d.armY + 0.4], nt[1]], label: [labF[0], labF[1] + 0.2] });
   if (d.sleeveLen > 0 && !d.strapped) {
     const cuff = rib ? bandH : 0;
     out.push(sleevePiece(d, d.sleeveLen - cuff, d.sleeveHem, cuff ? 0.375 : 1));
@@ -696,6 +700,16 @@ function topPieces(d: TopDims, g: Garment): RawPiece[] {
     out.push(hoodPiece(d, neckLen / 2));
   } else if (o.block === 'Sweatshirt') {
     out.push(band('bind', 'Rib neckband', Math.max(12, neckLen * 0.8), 5, 1, ['rib, fold in half'], true));
+  } else if (o.block === 'Quarter zip') {
+    out.push(band('collar', 'Rib stand collar', Math.max(12, neckLen * 0.85), 6, 1, ['rib, fold in half, ends at the zip'], true));
+    out.push(band('placket', 'Zip placket', 9, 3.4, 2, ['interface, 8 in zip']));
+  } else if (o.block === 'Mock neck') {
+    out.push(band('collar', 'Mock neck collar', Math.max(12, neckLen * 0.85), 5.5, 1, ['rib, fold in half'], true));
+  } else if (o.block === 'Anorak') {
+    out.push(band('placket', 'Half zip placket', 11, 3.4, 2, ['interface, 11 in zip']));
+    out.push(band('casing', 'Hem casing', d.hem * 0.9, 2.2, 2, ['drawcord casing, 2 eyelets in front']));
+    out.push(band('elastic', 'Cuff elastic casing', Math.max(6, d.sleeveHem * 2), 2.2, 2, ['1 in elastic, stretch to fit']));
+    if (o.pocket === 'Chest') out.push({ id: 'pocket', name: 'Chest zip pocket', cut: 2, poly: [[0, 0], [5.5, 0], [5.5, 6], [0, 6]], grain: { x: 2.7 }, notches: [], label: [2.7, 3], notes: ['welt, 5 in zip'] });
   } else if (o.block === 'Polo') {
     out.push(band('collar', 'Knit collar', Math.max(14, neckLen * 0.9), 6, 1, ['fold in half, open at the placket'], true));
     out.push(band('placket', 'Placket', 7.5, 3.2, 2, ['fold, 3 buttons']));
@@ -703,10 +717,15 @@ function topPieces(d: TopDims, g: Garment): RawPiece[] {
     out.push(band('bind', 'Neck binding', Math.max(12, neckLen * 0.85), 2, 1, ['stretch to fit']));
     if (d.strapped) out.push(band('armbind', 'Armhole binding', Math.max(10, f.armLen * 0.85), 2, 2, ['stretch to fit']));
   }
-  if (rib) {
-    out.push(band('cuff', 'Cuff', Math.max(6, d.sleeveHem * 2 * 0.78), bandH * 2, 2, ['rib, fold in half'], true));
-    out.push(band('hemband', 'Hem band', d.hem * 0.8 / 2, bandH * 2, 2, ['rib, front and back'], true));
+  if (rib) out.push(band('cuff', 'Cuff', Math.max(6, d.sleeveHem * 2 * 0.78), bandH * 2, 2, ['rib, fold in half'], true));
+  if (hemRib) out.push(band('hemband', 'Hem band', d.hem * 0.8 / 2, bandH * 2, 2, ['rib, front and back'], true));
+  // sleeve construction notes for raglan and dropped shoulders
+  const ss = sleeveStyleOf(o);
+  if (ss !== 'Set-in') {
+    const sl = out.find((p) => p.id === 'sleeve');
+    if (sl) sl.notes = [...(sl.notes ?? []), ss === 'Raglan' ? 'raglan: cap runs to the neck, join to the front and back raglan seams' : 'dropped shoulder: cap sits low on the arm, shoulder seam falls past the shoulder point'];
   }
+  if (hemOf(o) === 'Curved' && !hemRib) for (const p of out) if (p.id === 'front' || p.id === 'back') p.notes = [...(p.notes ?? []), 'curved hem: raise the side seam hem by 0.7 in and blend to the centre'];
   if (cfg.pocket === 'kanga') {
     const w = Math.max(9, d.chest * 0.34), ph = 8.5, tw = w * 0.62;
     out.push({ id: 'pocket', name: 'Kangaroo pocket', cut: 1, hemSA: 0.375, poly: [[(w - tw) / 2, 0], [(w + tw) / 2, 0], [w, ph], [0, ph]], saFn: (a, b) => (a[1] < 0.02 && b[1] < 0.02 ? 1 : SEAM_SA), grain: { x: w / 2 }, notches: [[(w - tw) / 2, 0], [(w + tw) / 2, 0]], label: [w / 2, ph * 0.5] });
@@ -725,8 +744,15 @@ interface Style {
   frontNote?: string;
 }
 const NO: Style = { open: false, ovl: 0, rib: false, hood: false, belt: false, collar: 'none', pocket: 'none' };
+function cuffRibOf(o: { block: string }, cfg: Style): boolean {
+  return o.block === 'Work jacket' ? false : o.block === 'Coach jacket' ? true : cfg.rib;
+}
 function styleOf(o: { block: string; hood?: boolean }): Style {
   switch (o.block) {
+    case 'Quarter zip': return { ...NO, rib: true };
+    case 'Anorak': return { ...NO, hood: true, pocket: (o as { pocket?: string }).pocket === 'Chest' ? 'none' : 'kanga' };
+    case 'Work jacket': return { ...NO, open: true, rib: true, collar: 'shirt', pocket: 'flap', frontNote: 'separating zip with a storm flap' };
+    case 'Coach jacket': return { ...NO, open: true, ovl: 1, collar: 'shirt', frontNote: 'snap band, 1 in overlap' };
     case 'Hoodie': return { ...NO, rib: true, hood: true, pocket: 'kanga' };
     case 'Sweatshirt': return { ...NO, rib: true };
     case 'Zip hoodie': return { ...NO, open: true, rib: true, hood: true, pocket: 'kanga', frontNote: 'separating zip on the centre front' };

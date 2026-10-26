@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { smooth, type Vec } from '../model/figure';
 import { mix } from '../model/color';
-import { cuffedOf, dressHemV, dressTopOf, isHoodie, silhouetteOf, sleeveOf, uv } from '../model/top';
+import { cuffedOf, dressHemV, dressTopOf, hasStyleOptions, hemOf, isHoodie, silhouetteOf, sleeveOf, uv } from '../model/top';
+import { streetFront, styleOverlay } from './TopDetailsStreet';
 import { moreFront } from './TopDetailsMore';
 import { bodyHem, Cuff, f1, helpers, hemBand, line, RibBand, sleeveEdge, Stitch, Zip, type DetailCtx } from './topParts';
 export type { DetailCtx } from './topParts';
@@ -35,8 +36,10 @@ function hoodieFront(c: DetailCtx): ReactNode {
   const o = c.g.top!;
   const hemV = c.hemV;
   const out: ReactNode[] = [];
-  const puff = o.block === 'Puffer';
+  const anorak = o.block === 'Anorak';
+  const puff = o.block === 'Puffer' || anorak;
   const zipHood = o.block === 'Zip hoodie';
+  const plainHem = hasStyleOptions(o) && hemOf(o) !== 'Rib band';
   const bandH = o.fit === 'Oversized' ? 13 : 11;
   const band = hemBand(c.shape, bandH);
   const shade = mix(c.base, '#000000', 0.55);
@@ -62,7 +65,7 @@ function hoodieFront(c: DetailCtx): ReactNode {
         <path d={smooth([U(-0.58, 14), U(-0.34, 28), U(-0.08, 38)])} fill="none" stroke={c.outline} strokeWidth={0.7} opacity={0.55} strokeLinecap="round" />
       </g>,
     );
-  } else if (!puff) {
+  } else if (o.block !== 'Puffer') {
     // rim of the hood round the front of the neck, and the drawcords
     const nf = c.g.points.find((p) => p.key === 'neckF');
     const v0 = nf ? uv(nf).v : 0.1;
@@ -105,7 +108,7 @@ function hoodieFront(c: DetailCtx): ReactNode {
     }
   }
   // body: rib hem band, kangaroo pocket
-  if (c.view === 'front' && !zipHood && !puff) {
+  if (c.view === 'front' && !zipHood && (!puff || (anorak && o.pocket !== 'Chest'))) {
     const vt = hemV - 0.5, vb = hemV - 0.1;
     const pw = (v: number) => 0.46 + ((v - vt) / (vb - vt)) * 0.2;
     const ptsTop: Vec[] = [];
@@ -123,7 +126,7 @@ function hoodieFront(c: DetailCtx): ReactNode {
       </g>,
     );
   }
-  if (band.poly.length && !puff)
+  if (band.poly.length && !puff && !plainHem)
     out.push(
       <g key="band" clipPath={`url(#tclip-${c.g.id})`}>
         <RibBand {...band} c={c} id="hem" />
@@ -362,7 +365,18 @@ export function BehindBody({ c }: { c: DetailCtx }) {
 
 /** Drawn on the body, under the holes mask. */
 export function OnBody({ c }: { c: DetailCtx }) {
+  return (
+    <>
+      {blockDetails(c)}
+      {styleOverlay(c)}
+    </>
+  );
+}
+
+function blockDetails(c: DetailCtx): ReactNode {
   switch (c.g.top?.block) {
+    case 'Anorak':
+      return <>{hoodieFront(c)}{streetFront(c)}</>;
     case 'Hoodie':
     case 'Zip hoodie':
       return <>{hoodieFront(c)}</>;

@@ -65,7 +65,8 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
   const fill = rendered ? `url(#${fabricId(g)})` : base;
   const outline = rendered ? mix(base, '#000000', 0.62) : '#141414';
   const sw = rendered ? 1.1 : 1.6;
-  const tonal = !!g.pants;
+  const tonal = !!g.pants || !!g.shorts?.style;
+  const noWear = g.fabric !== 'Denim' && (g.pants?.block === 'Jogger' || !!g.shorts?.style);
   const thread = tonal ? mix(base, dark ? '#ffffff' : '#000000', dark ? 0.36 : 0.3) : '#D8A640';
   const skirt = g.type === 'skirt';
   const hem = hemPaths(g);
@@ -200,11 +201,11 @@ export const GarmentView = memo(function GarmentView({ g, selectedText, showCut,
                 );
               })()}
               <g fill="#fff" filter={`url(#fd-${uid})`}>
-                {fadeSpots(g).map((s, i) => (
+                {(noWear ? [] : fadeSpots(g)).map((s, i) => (
                   <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} opacity={s.o} />
                 ))}
               </g>
-              {!legOnly && (
+              {!legOnly && !noWear && (
                 <g fill="none" stroke="#fff" strokeLinecap="round" filter={`url(#ws-${uid})`}>
                   {whiskerStrokes(g).map((s, i) => (
                     <path key={i} d={s.d} strokeWidth={s.w * 0.8} opacity={Math.min(0.7, s.o * 1.5)} />

@@ -19,7 +19,7 @@ import {
   type Pt,
   type SpecRow,
 } from './garment';
-import { computeTopSpec, dressHemV, dressLenOf, dressTopOf, silhouetteOf, sleeveOf, uv } from './top';
+import { computeTopSpec, CURVE_V, dressHemV, dressLenOf, dressTopOf, hasStyleOptions, hemOf, silhouetteOf, sleeveOf, sleeveStyleOf, uv } from './top';
 import { blockParts } from './flatsBlocks';
 import { shoeMaterials, shoeSpec, shoesViews } from './flatsShoes';
 import type { TorsoProfile } from './figure';
@@ -521,6 +521,7 @@ function topViews(g: Garment): FlatView[] {
     const vNeck = !back && (o.block === 'Moto jacket' || (!isDress && o.neck === 'V') || (isDress && o.neck === 'V' && !bare));
     const neckOpen = vNeck ? `M${M(nR)} L${M(nf)} L${M(nL)}` : `M${M(nR)} Q${M(ctrl)} ${M(nL)}`;
     const isPair = (a: Pt, b: Pt) => (/^strap/.test(a.key ?? '') && /^arm/.test(b.key ?? '')) || (/^arm/.test(a.key ?? '') && /^strap/.test(b.key ?? ''));
+    const curvedHem = hemOf(o) === 'Curved' && !o.tuck && !isDress && hasStyleOptions(o);
     let d = 'M' + M(fp[0]);
     let prev = 0;
     for (let i = 1; i < pts.length; i++) {
@@ -528,6 +529,10 @@ function topViews(g: Garment): FlatView[] {
       if (strapped && isPair(pts[prev], pts[i])) {
         const m = mid(fp[prev], fp[i]);
         d += ` Q${M({ x: m.x + Math.sign(150 - m.x) * 16, y: m.y })} ${M(fp[i])}`;
+      } else if (curvedHem && pts[prev].key === 'hemL' && pts[i].key === 'hemR') {
+        // shirttail hem: the corners ride high and the centre drops in a round curve
+        const dip = T(0, hemV + CURVE_V).y - T(0, hemV).y;
+        d += ` Q${M({ x: (fp[prev].x + fp[i].x) / 2, y: (fp[prev].y + fp[i].y) / 2 + 2 * dip })} ${M(fp[i])}`;
       } else d += ' L' + M(fp[i]);
       prev = i;
     }
@@ -574,13 +579,14 @@ function topViews(g: Garment): FlatView[] {
         const s = at('sh' + K), a = at('arm' + K);
         const m = mid(s, a), dir = Math.sign(150 - m.x);
         const c = { x: m.x + dir * 12, y: m.y };
-        shapes.push({ d: `M${M(s)} Q${M(c)} ${M(a)}`, k: 'seam' });
+        const noArm = sleeveStyleOf(o) === 'Raglan' && hasStyleOptions(o);
+        if (!noArm) shapes.push({ d: `M${M(s)} Q${M(c)} ${M(a)}`, k: 'seam' });
         const so = at('slO' + K), si = at('sl' + 'I' + K);
         const { x: ux, y: uy } = dirOf(K);
         const hs = (p: V) => ({ x: p.x - ux * 7, y: p.y - uy * 7 });
         const a1 = hs(so), a2 = hs(si);
         if (!parts?.noSleeveStitch) shapes.push({ d: `M${M(a1)} L${M(a2)}`, k: 'stitch' });
-        if (K === 'L') {
+        if (K === 'L' && !noArm) {
           const p = quadPt(s, c, a, 0.5);
           anchors.push({ key: 'armhole', label: 'Armhole seam', desc: 'Set-in sleeve, overlocked seam', x: p.x, y: p.y });
           const hm = mid(a1, a2);
@@ -782,6 +788,15 @@ export function buildFlat(g: Garment, torso: TorsoProfile, cwName?: string): Fla
       else materials.push({ k: 'Neck', v: o.neck });
     }
     if (o.block === 'Hoodie') notes.push('Rib trim is 2x2 rib in the body fabric colour.');
+    if (hasStyleOptions(o)) {
+      materials.push({ k: 'Sleeve', v: sleeveStyleOf(o) }, { k: 'Hem', v: hemOf(o) });
+      if (o.ringer) notes.push('Ringer trim: neck binding and sleeve bands are cut in the contrast colour.');
+      if (hemOf(o) === 'Curved') notes.push('Curved hem: the side seams finish higher than the centre front and back.');
+    }
+    if (o.block === 'Anorak') notes.push('Nylon shell. Hood has a drawcord, hem has a drawcord channel, cuffs are elasticated.');
+    if (o.block === 'Work jacket') notes.push(hemOf(o) === 'Rib band' ? 'Hem band is 2x2 rib in the body fabric colour.' : 'Hem band is self fabric, topstitched.');
+    if (o.block === 'Quarter zip') notes.push('Zip is 8 in, with a bar tack at the bottom. Rib collar and cuffs.');
+    if (o.block === 'Coach jacket') notes.push('Snap front, unlined nylon shell, elastic rib cuffs.');
     if (o.block === 'Moto jacket') notes.push('Front zip runs on a slant from the chest to the left hip.');
   } else if (isShoes) {
     notes.push('Side view shows the lateral profile. Dashed lines are topstitching.');

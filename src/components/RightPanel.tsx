@@ -28,7 +28,7 @@ import {
 } from '../model/garment';
 import { SHOE_LOOK, HEEL_KINDS, heelKindOf, soleOf, SHOE_KINDS, type ShoeKind } from '../model/shoes';
 import { Icon } from './icons';
-import { canTuck, hasNeckOption, isDress, SLEEVE_KINDS, sleeveKindOf, computeTopSpec, DRESS_LENS, DRESS_TOPS, dressLenOf, dressTopOf, NECKS, silhouetteOf, SILHOUETTES, TOP_BLOCKS, TOP_FITS, TOP_LENGTHS } from '../model/top';
+import { ANORAK_POCKETS, canTuck, hasNeckOption, hasStyleOptions, hemOf, HEM_STYLES, SLEEVE_STYLES, sleeveStyleOf, isDress, SLEEVE_KINDS, sleeveKindOf, computeTopSpec, DRESS_LENS, DRESS_TOPS, dressLenOf, dressTopOf, NECKS, silhouetteOf, SILHOUETTES, TOP_BLOCKS, TOP_FITS, TOP_LENGTHS } from '../model/top';
 import { torsoProfile } from '../model/figure';
 import { TOP_FABRICS, type Garment } from '../model/garment';
 import { ColorwaysPanel, PaletteSwatches, ProductionGroups } from './ProductionPanels';
@@ -172,6 +172,12 @@ export function RightPanel() {
           {pants && g.pants && (
             <>
               <Options names={PANTS_BLOCKS} value={g.pants.block} onPick={(n: PantsBlock) => a().setPants(g.id, { block: n })} />
+              {g.pants.block === 'Jogger' && (
+                <>
+                  <p className="hint sub">Hem</p>
+                  <Options names={['Cuffed', 'Open hem'] as const} value={g.pants.open ? 'Open hem' : 'Cuffed'} onPick={(n) => a().setPants(g.id, { open: n === 'Open hem' })} />
+                </>
+              )}
               {g.pants.block === 'Trouser' && (
                 <div className="opts">
                   <button className={g.pants.pleats ? 'opt on' : 'opt'} onClick={() => a().setPants(g.id, { pleats: !g.pants!.pleats })}>
@@ -340,6 +346,31 @@ function TopPanel({ g }: { g: Garment }) {
               Hood
             </button>
           </div>
+        )}
+        {hasStyleOptions(o) && (
+          <>
+            <p className="hint sub">Sleeve</p>
+            <Options names={SLEEVE_STYLES} value={sleeveStyleOf(o)} onPick={(n) => a().setTop(g.id, { sleeveStyle: n })} />
+            <p className="hint sub">Hem</p>
+            <Options names={HEM_STYLES} value={hemOf(o)} onPick={(n) => a().setTop(g.id, { hem: n })} />
+            <div className="opts">
+              <button className={o.ringer ? 'opt on' : 'opt'} onClick={() => a().setTop(g.id, { ringer: !o.ringer })}>
+                Ringer trim
+              </button>
+            </div>
+          </>
+        )}
+        {o.block === 'Work jacket' && (
+          <>
+            <p className="hint sub">Hem</p>
+            <Options names={['Rib band', 'Straight'] as const} value={hemOf(o) === 'Rib band' ? 'Rib band' : 'Straight'} onPick={(n) => a().setTop(g.id, { hem: n })} />
+          </>
+        )}
+        {o.block === 'Anorak' && (
+          <>
+            <p className="hint sub">Pocket</p>
+            <Options names={ANORAK_POCKETS} value={o.pocket ?? 'Kangaroo'} onPick={(n) => a().setTop(g.id, { pocket: n })} />
+          </>
         )}
         {hasNeckOption(o) && <Options names={NECKS} value={o.neck} onPick={(n) => a().setTop(g.id, { neck: n })} />}
         {canTuck(o) && !isDress(o) && (

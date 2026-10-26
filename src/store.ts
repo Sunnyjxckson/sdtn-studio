@@ -21,6 +21,8 @@ import {
   SHORTS_INSEAM,
   SKIRT_LEN,
   shortsName as shortsLabel,
+  SHORTS_STYLE_NAME,
+  type ShortsStyle,
   type HemKind,
   type ShortsLength,
   type SkirtLength,
@@ -241,7 +243,7 @@ interface State extends ProductionActions {
   setNoteText: (id: string, t: string) => void;
   removeNote: (id: string) => void;
   addJeans: (fit: Fit) => void;
-  addShorts: (length: ShortsLength) => void;
+  addShorts: (length: ShortsLength, style?: ShortsStyle, hem?: HemKind) => void;
   addSkirt: (shape: SkirtShape, length?: SkirtLength) => void;
   addPants: (o: PantsOpts) => void;
   setPants: (id: string, patch: Partial<PantsOpts>) => void;
@@ -784,8 +786,8 @@ export const useStore = create<State>()(
           s.tool = 'move';
         });
       },
-      addShorts: (length) => {
-        const g = createShorts(length);
+      addShorts: (length, style, hem) => {
+        const g = createShorts(length, undefined, style, hem);
         const { sex, view } = get().doc.base;
         g.transform = placeOnCroquis(g, sex, view);
         get().checkpoint();
@@ -825,6 +827,11 @@ export const useStore = create<State>()(
           const g = findG(d, id);
           if (!g || !g.pants) return;
           Object.assign(g.pants, patch);
+          if (patch.block && patch.block !== 'Jogger') delete g.pants.open;
+          if (patch.open !== undefined && g.pants.block === 'Jogger' && !patch.block) {
+            g.parts.hem = patch.open ? 'Clean' : 'Rib';
+            g.fit = patch.open ? 'Baggy' : 'Straight';
+          }
           if (patch.block) {
             const look = PANTS_LOOK[patch.block];
             g.block = patch.block.toLowerCase();
@@ -858,9 +865,9 @@ export const useStore = create<State>()(
         step((d) => {
           const g = findG(d, id);
           if (!g || !g.shorts) return;
-          g.shorts = { length, inseam: SHORTS_INSEAM[length] };
+          g.shorts = { length, inseam: SHORTS_INSEAM[length], ...(g.shorts.style ? { style: g.shorts.style } : {}) };
           g.points = buildShortsPoints(g.fit, g.rise, g.shorts.inseam);
-          g.name = shortsLabel(length);
+          g.name = g.shorts.style ? SHORTS_STYLE_NAME[g.shorts.style] : shortsLabel(length);
         }),
       setHem: (id, hem) =>
         step((d) => {

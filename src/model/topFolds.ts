@@ -68,7 +68,7 @@ export function topFolds(id: string, o: TopOpts, hemV: number, bust: boolean): F
     // a long diagonal pull from the bust toward the far side of the hem, from the walking stride
     out.push({ pts: [T(-0.4, 0.42), T(0.05, 0.75), T(0.55, hemV - 0.05)], w: 4 + loose * 2, o: 0.14, ridge: true });
   }
-  if (o.block === 'Hoodie' || o.block === 'Sweatshirt' || o.block === 'Zip hoodie' || o.block === 'Bomber') {
+  if (o.block === 'Hoodie' || o.block === 'Sweatshirt' || o.block === 'Zip hoodie' || o.block === 'Bomber' || o.block === 'Quarter zip' || o.block === 'Work jacket' || o.block === 'Anorak') {
     // the body blouses over the rib band, and the sleeves push up into stacked folds above the cuffs
     for (let k = 0; k < 6; k++) {
       const u = -0.85 + k * 0.34 + j(0.06);

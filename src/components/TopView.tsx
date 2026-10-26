@@ -3,7 +3,7 @@ import { isDarkGarment, type Garment } from '../model/garment';
 import { garmentHex } from '../model/production';
 import { AllOverFill, GraphicsLayer } from './GraphicsLayer';
 import { smooth, type TorsoProfile, type Vec } from '../model/figure';
-import { sleeveOf, stiffOf, topForward, topShape, torsoPt, viewPoints } from '../model/top';
+import { sleeveOf, sleeveStyleOf, stiffOf, topForward, topShape, torsoPt, viewPoints } from '../model/top';
 import { BehindBody, OnBody, OverBody, type DetailCtx } from './TopDetails';
 import { mix } from '../model/color';
 import { topFolds } from '../model/topFolds';
@@ -74,11 +74,11 @@ export const TopView = memo(function TopView({ g, t, rendered, shading, selected
   const shadeC = mix(base, '#000000', dark ? 0.7 : 0.55);
   // set-in sleeve seam: from the shoulder point round the top of the arm to the underarm
   const armholes: string[] = [];
-  if (g.top && sleeveOf(g.top) > 0) {
+  if (g.top && sleeveOf(g.top) > 0 && sleeveStyleOf(g.top) !== 'Raglan') {
     for (const K of ['L', 'R'] as const) {
       const sh = g.points.find((p) => p.key === `sh${K}`), pit = g.points.find((p) => p.key === `arm${K}`);
       if (!sh || !pit) continue;
-      const drop = g.top.fit === 'Oversized' ? 0.3 : g.top.fit === 'Regular' ? 0.12 : 0.06;
+      const drop = (g.top.fit === 'Oversized' ? 0.3 : g.top.fit === 'Boxy' ? 0.2 : g.top.fit === 'Regular' ? 0.12 : 0.06) + (sleeveStyleOf(g.top) === 'Dropped' ? 0.16 : 0);
       const side = K === 'L' ? 'armL' : 'armR';
       const a0 = topForward(t, sh, stiff), a2 = topForward(t, pit, stiff);
       const c1 = topForward(t, { x: drop * 100 * 0.9, y: 100 - 35, r: side }, stiff);

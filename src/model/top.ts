@@ -10,20 +10,28 @@ import type { FabricKind, Garment, Pt, WashName } from './garment';
 
 export type TopBlock =
   | 'Tank' | 'Tee' | 'Long sleeve' | 'Hoodie' | 'Moto jacket' | 'Dress'
-  | 'Button-up' | 'Polo' | 'Sweatshirt' | 'Bomber' | 'Trucker' | 'Puffer' | 'Trench' | 'Blazer' | 'Zip hoodie';
+  | 'Button-up' | 'Polo' | 'Sweatshirt' | 'Bomber' | 'Trucker' | 'Puffer' | 'Trench' | 'Blazer' | 'Zip hoodie'
+  | 'Mock neck' | 'Quarter zip' | 'Anorak' | 'Work jacket' | 'Coach jacket';
 export type SleeveKind = 'Short' | 'Long';
 export const SLEEVE_KINDS: SleeveKind[] = ['Short', 'Long'];
 export type Silhouette = 'Slip' | 'Bodycon' | 'A-line';
 export type DressLen = 'Mini' | 'Midi' | 'Maxi';
 export type DressTop = 'Straps' | 'Wide strap' | 'Strapless' | 'Short sleeve' | 'Long sleeve';
-export type TopFit = 'Fitted' | 'Regular' | 'Oversized';
+export type CoreFit = 'Fitted' | 'Regular' | 'Oversized';
+export type TopFit = CoreFit | 'Boxy';
+export type SleeveStyle = 'Set-in' | 'Raglan' | 'Dropped';
+export type HemStyle = 'Straight' | 'Curved' | 'Rib band';
+export type AnorakPocket = 'Kangaroo' | 'Chest';
+export const SLEEVE_STYLES: SleeveStyle[] = ['Set-in', 'Raglan', 'Dropped'];
+export const HEM_STYLES: HemStyle[] = ['Straight', 'Curved', 'Rib band'];
+export const ANORAK_POCKETS: AnorakPocket[] = ['Kangaroo', 'Chest'];
 export type TopLength = 'Crop' | 'Waist' | 'Hip' | 'Long';
 export type NeckKind = 'Crew' | 'Scoop' | 'V';
-export const TOP_BLOCKS: TopBlock[] = ['Tank', 'Tee', 'Long sleeve', 'Button-up', 'Polo', 'Sweatshirt', 'Hoodie', 'Zip hoodie', 'Moto jacket', 'Bomber', 'Trucker', 'Puffer', 'Trench', 'Blazer', 'Dress'];
+export const TOP_BLOCKS: TopBlock[] = ['Tank', 'Tee', 'Long sleeve', 'Mock neck', 'Button-up', 'Polo', 'Sweatshirt', 'Quarter zip', 'Hoodie', 'Zip hoodie', 'Moto jacket', 'Bomber', 'Trucker', 'Work jacket', 'Coach jacket', 'Anorak', 'Puffer', 'Trench', 'Blazer', 'Dress'];
 export const SILHOUETTES: Silhouette[] = ['Slip', 'Bodycon', 'A-line'];
 export const DRESS_LENS: DressLen[] = ['Mini', 'Midi', 'Maxi'];
 export const DRESS_TOPS: DressTop[] = ['Straps', 'Wide strap', 'Strapless', 'Short sleeve', 'Long sleeve'];
-export const TOP_FITS: TopFit[] = ['Fitted', 'Regular', 'Oversized'];
+export const TOP_FITS: TopFit[] = ['Fitted', 'Regular', 'Boxy', 'Oversized'];
 export const TOP_LENGTHS: TopLength[] = ['Crop', 'Waist', 'Hip', 'Long'];
 export const NECKS: NeckKind[] = ['Crew', 'Scoop', 'V'];
 
@@ -41,6 +49,14 @@ export interface TopOpts {
   sleeve?: SleeveKind;
   /** Puffer only: attach a hood. */
   hood?: boolean;
+  /** Sleeve construction on tees, long sleeves, sweatshirts and hoodies. Missing means set-in. */
+  sleeveStyle?: SleeveStyle;
+  /** Body hem. Missing means the block's own hem (rib band on hoodies and sweatshirts, straight on tees). */
+  hem?: HemStyle;
+  /** Contrast trim at the neck and sleeve ends. */
+  ringer?: boolean;
+  /** Anorak only: kangaroo or chest pocket. */
+  pocket?: AnorakPocket;
 }
 
 const BLOCK_WORD: Record<TopBlock, string> = {
@@ -59,23 +75,40 @@ const BLOCK_WORD: Record<TopBlock, string> = {
   Trench: 'trench coat',
   Blazer: 'blazer',
   'Zip hoodie': 'zip hoodie',
+  'Mock neck': 'mock neck long sleeve',
+  'Quarter zip': 'quarter zip sweatshirt',
+  Anorak: 'half zip anorak',
+  'Work jacket': 'work jacket',
+  'Coach jacket': 'coach jacket',
 };
 export function topName(o: TopOpts): string {
   if (o.block === 'Dress') return `${silhouetteOf(o)} dress`;
   if (o.block === 'Button-up' || o.block === 'Polo') return `${sleeveKindOf(o) === 'Short' ? 'Short sleeve' : o.fit} ${BLOCK_WORD[o.block]}`;
-  return `${o.fit} ${BLOCK_WORD[o.block]}`;
+  const tags = [sleeveStyleOf(o) === 'Raglan' ? 'raglan ' : '', hemOf(o) === 'Curved' && o.length === 'Long' ? 'longline ' : '', o.ringer ? 'ringer ' : ''].join('');
+  return `${o.fit}${tags ? ' ' + tags.trim() : ''} ${BLOCK_WORD[o.block]}`;
 }
+export const sleeveStyleOf = (o?: TopOpts): SleeveStyle => o?.sleeveStyle ?? 'Set-in';
+/** Blocks that take the sleeve style, hem and ringer options. */
+export const hasStyleOptions = (o: TopOpts) => o.block === 'Tee' || o.block === 'Long sleeve' || o.block === 'Sweatshirt' || o.block === 'Hoodie' || o.block === 'Mock neck';
+export const hemOf = (o?: TopOpts): HemStyle => {
+  if (!o) return 'Straight';
+  if (o.hem) return o.hem;
+  return o.block === 'Hoodie' || o.block === 'Zip hoodie' || o.block === 'Sweatshirt' || o.block === 'Quarter zip' || o.block === 'Work jacket' ? 'Rib band' : 'Straight';
+};
 export const sleeveKindOf = (o: TopOpts): SleeveKind => o.sleeve ?? (o.block === 'Polo' ? 'Short' : 'Long');
 /** Hooded blocks: the hood lies behind the neck. */
-export const isHoodie = (o?: TopOpts) => o?.block === 'Hoodie' || o?.block === 'Zip hoodie' || (o?.block === 'Puffer' && !!o.hood);
+export const isHoodie = (o?: TopOpts) => o?.block === 'Hoodie' || o?.block === 'Zip hoodie' || o?.block === 'Anorak' || (o?.block === 'Puffer' && !!o.hood);
 /** Blocks with a band at the hem and cuffs, so the hem gathers in. */
-export const isBanded = (o?: TopOpts) => o?.block === 'Hoodie' || o?.block === 'Zip hoodie' || o?.block === 'Sweatshirt' || o?.block === 'Bomber' || o?.block === 'Moto jacket';
+export const isBanded = (o?: TopOpts) =>
+  !!o && (o.block === 'Bomber' || o.block === 'Moto jacket' || o.block === 'Quarter zip' || o.block === 'Work jacket' || (hemOf(o) === 'Rib band' && o.block !== 'Anorak' && o.block !== 'Coach jacket'));
 /** Coats run past the hip and use the skirt part of the body mapping. */
 export const isCoat = (o?: TopOpts) => o?.block === 'Trench';
 /** Blocks that can be tucked in. */
 export const canTuck = (o: TopOpts) => o.block === 'Tank' || o.block === 'Tee' || o.block === 'Long sleeve' || o.block === 'Button-up' || o.block === 'Polo';
 /** Blocks where the neck option applies. */
 export const hasNeckOption = (o: TopOpts) => o.block === 'Tank' || o.block === 'Tee' || o.block === 'Long sleeve';
+/** Hems that show a band at the bottom of the body. */
+export const hasRibHem = (o?: TopOpts) => !!o && isBanded(o) && o.block !== 'Bomber' && o.block !== 'Moto jacket';
 export const isDress = (o?: TopOpts) => o?.block === 'Dress';
 /** Block, fabric and wash a new block starts with. */
 export const BLOCK_LOOK: Partial<Record<TopBlock, { fabric: FabricKind; wash: WashName }>> = {
@@ -91,6 +124,11 @@ export const BLOCK_LOOK: Partial<Record<TopBlock, { fabric: FabricKind; wash: Wa
   Trench: { fabric: 'Twill', wash: 'Cream' },
   Blazer: { fabric: 'Twill', wash: 'Navy' },
   'Zip hoodie': { fabric: 'Jersey', wash: 'Grey' },
+  'Mock neck': { fabric: 'Rib', wash: 'Black' },
+  'Quarter zip': { fabric: 'Jersey', wash: 'Heather' },
+  Anorak: { fabric: 'Nylon', wash: 'Olive' },
+  'Work jacket': { fabric: 'Twill', wash: 'Olive' },
+  'Coach jacket': { fabric: 'Nylon', wash: 'Navy' },
 };
 export const dressTopOf = (o: TopOpts): DressTop => o.dressTop ?? 'Straps';
 export const dressLenOf = (o: TopOpts): DressLen => o.dressLen ?? 'Midi';
@@ -99,7 +137,7 @@ export const silhouetteOf = (o: TopOpts): Silhouette => o.silhouette ?? 'Slip';
 export function sleeveOf(o: TopOpts): number {
   switch (o.block) {
     case 'Tank': return 0;
-    case 'Tee': return o.fit === 'Fitted' && o.length === 'Crop' ? 0.3 : 0.44;
+    case 'Tee': return o.fit === 'Fitted' && o.length === 'Crop' ? 0.3 : o.fit === 'Boxy' ? 0.52 : 0.44;
     case 'Dress': return dressTopOf(o) === 'Long sleeve' ? 2.02 : dressTopOf(o) === 'Short sleeve' ? 0.4 : 0;
     case 'Button-up': return sleeveKindOf(o) === 'Short' ? 0.5 : 2.02;
     case 'Polo': return sleeveKindOf(o) === 'Short' ? 0.46 : 2.02;
@@ -107,8 +145,8 @@ export function sleeveOf(o: TopOpts): number {
   }
 }
 /** Cuffed sleeves end narrower than the sleeve above them. */
-const CUFF: Record<TopFit, number> = { Fitted: 1.0, Regular: 1.1, Oversized: 1.26 };
-const CUFF_BY: Partial<Record<TopBlock, Record<TopFit, number>>> = {
+const CUFF: Record<CoreFit, number> = { Fitted: 1.0, Regular: 1.1, Oversized: 1.26 };
+const CUFF_BY: Partial<Record<TopBlock, Record<CoreFit, number>>> = {
   Hoodie: CUFF,
   'Zip hoodie': CUFF,
   Sweatshirt: CUFF,
@@ -119,69 +157,99 @@ const CUFF_BY: Partial<Record<TopBlock, Record<TopFit, number>>> = {
   Trench: { Fitted: 1.1, Regular: 1.18, Oversized: 1.32 },
   'Button-up': { Fitted: 1.0, Regular: 1.08, Oversized: 1.22 },
   Polo: { Fitted: 1.0, Regular: 1.08, Oversized: 1.22 },
+  'Quarter zip': CUFF,
+  'Work jacket': { Fitted: 1.04, Regular: 1.14, Oversized: 1.28 },
+  'Coach jacket': { Fitted: 1.0, Regular: 1.1, Oversized: 1.24 },
+  Anorak: { Fitted: 1.0, Regular: 1.1, Oversized: 1.24 },
 };
 export const cuffedOf = (o: TopOpts): number | null => {
   if ((o.block === 'Button-up' || o.block === 'Polo') && sleeveOf(o) < 1) return null;
-  return CUFF_BY[o.block]?.[o.fit] ?? null;
+  const row = CUFF_BY[o.block];
+  if (!row) return null;
+  return o.fit === 'Boxy' ? (row.Regular + row.Oversized) / 2 : row[o.fit];
 };
 
 export const torsoPt = (u: number, v: number, key?: string): Pt => ({ x: 150 + u * 100, y: 100 + v * 200, ...(key ? { key } : {}) });
 const armPt = (side: 'armL' | 'armR', a: number, o: number, key?: string): Pt => ({ x: a * 100, y: 100 + o * 100, r: side, ...(key ? { key } : {}) });
 export const uv = (p: { x: number; y: number }) => ({ u: (p.x - 150) / 100, v: (p.y - 100) / 200 });
 
-const EASE: Record<TopFit, { body: number; waist: number; sleeve: number; shoulder: number; drop: number }> = {
+type EaseRow = { body: number; waist: number; sleeve: number; shoulder: number; drop: number };
+type EaseTable = Record<CoreFit, EaseRow>;
+const EASE: EaseTable = {
   Fitted: { body: 1.04, waist: 1.04, sleeve: 1.1, shoulder: 1.04, drop: 0 },
   Regular: { body: 1.1, waist: 1.1, sleeve: 1.26, shoulder: 1.07, drop: 0.03 },
   Oversized: { body: 1.26, waist: 1.3, sleeve: 1.55, shoulder: 1.2, drop: 0.12 },
 };
-const EASE_HOODIE: typeof EASE = {
+const EASE_HOODIE: EaseTable = {
   Fitted: { body: 1.1, waist: 1.07, sleeve: 1.12, shoulder: 1.05, drop: 0.02 },
   Regular: { body: 1.2, waist: 1.15, sleeve: 1.24, shoulder: 1.1, drop: 0.07 },
   Oversized: { body: 1.4, waist: 1.36, sleeve: 1.5, shoulder: 1.28, drop: 0.2 },
 };
-const EASE_MOTO: typeof EASE = {
+const EASE_MOTO: EaseTable = {
   Fitted: { body: 1.05, waist: 1.02, sleeve: 1.12, shoulder: 1.05, drop: 0 },
   Regular: { body: 1.13, waist: 1.08, sleeve: 1.24, shoulder: 1.09, drop: 0.03 },
   Oversized: { body: 1.3, waist: 1.24, sleeve: 1.48, shoulder: 1.22, drop: 0.1 },
 };
-const EASE_PUFFER: typeof EASE = {
+const EASE_PUFFER: EaseTable = {
   Fitted: { body: 1.12, waist: 1.1, sleeve: 1.3, shoulder: 1.08, drop: 0.03 },
   Regular: { body: 1.22, waist: 1.18, sleeve: 1.4, shoulder: 1.12, drop: 0.08 },
   Oversized: { body: 1.4, waist: 1.36, sleeve: 1.55, shoulder: 1.26, drop: 0.18 },
 };
-const EASE_BOMBER: typeof EASE = {
+const EASE_BOMBER: EaseTable = {
   Fitted: { body: 1.1, waist: 1.04, sleeve: 1.14, shoulder: 1.05, drop: 0.02 },
   Regular: { body: 1.2, waist: 1.12, sleeve: 1.26, shoulder: 1.1, drop: 0.06 },
   Oversized: { body: 1.38, waist: 1.3, sleeve: 1.5, shoulder: 1.24, drop: 0.16 },
 };
-const EASE_TAILORED: typeof EASE = {
+const EASE_TAILORED: EaseTable = {
   Fitted: { body: 1.06, waist: 1.0, sleeve: 1.1, shoulder: 1.05, drop: 0 },
   Regular: { body: 1.12, waist: 1.05, sleeve: 1.2, shoulder: 1.08, drop: 0.02 },
   Oversized: { body: 1.28, waist: 1.2, sleeve: 1.4, shoulder: 1.2, drop: 0.1 },
 };
-const EASE_COAT: typeof EASE = {
+const EASE_COAT: EaseTable = {
   Fitted: { body: 1.1, waist: 1.02, sleeve: 1.14, shoulder: 1.05, drop: 0.01 },
   Regular: { body: 1.18, waist: 1.1, sleeve: 1.26, shoulder: 1.1, drop: 0.04 },
   Oversized: { body: 1.34, waist: 1.26, sleeve: 1.5, shoulder: 1.22, drop: 0.14 },
 };
-const EASE_SHIRT: typeof EASE = {
+const EASE_SHIRT: EaseTable = {
   Fitted: { body: 1.04, waist: 1.02, sleeve: 1.1, shoulder: 1.04, drop: 0 },
   Regular: { body: 1.1, waist: 1.08, sleeve: 1.22, shoulder: 1.07, drop: 0.02 },
   Oversized: { body: 1.26, waist: 1.26, sleeve: 1.5, shoulder: 1.2, drop: 0.12 },
 };
-function easeOf(o: TopOpts) {
-  switch (o.block) {
-    case 'Hoodie': case 'Sweatshirt': case 'Zip hoodie': return EASE_HOODIE[o.fit];
-    case 'Moto jacket': return EASE_MOTO[o.fit];
-    case 'Puffer': return EASE_PUFFER[o.fit];
-    case 'Bomber': case 'Trucker': return EASE_BOMBER[o.fit];
-    case 'Blazer': return EASE_TAILORED[o.fit];
-    case 'Trench': return EASE_COAT[o.fit];
-    case 'Button-up': case 'Polo': return EASE_SHIRT[o.fit];
-    default: return EASE[o.fit];
+/** Boxy sits between regular and oversized: wide through the body and sleeve, with a dropped shoulder. */
+const pickEase = (t: EaseTable, fit: TopFit): EaseRow => {
+  if (fit !== 'Boxy') return t[fit];
+  const r = t.Regular, v = t.Oversized, k = 0.55;
+  const m = (a: number, b: number) => a + (b - a) * k;
+  return { body: m(r.body, v.body), waist: m(r.waist, v.waist), sleeve: m(r.sleeve, v.sleeve), shoulder: m(r.shoulder, v.shoulder), drop: m(r.drop, v.drop) };
+};
+export function easeOf(o: TopOpts): EaseRow {
+  const t = ((): EaseTable => {
+    switch (o.block) {
+      case 'Hoodie': case 'Sweatshirt': case 'Zip hoodie': case 'Quarter zip': return EASE_HOODIE;
+      case 'Moto jacket': return EASE_MOTO;
+      case 'Puffer': return EASE_PUFFER;
+      case 'Bomber': case 'Trucker': case 'Work jacket': case 'Coach jacket': case 'Anorak': return EASE_BOMBER;
+      case 'Blazer': return EASE_TAILORED;
+      case 'Trench': return EASE_COAT;
+      case 'Button-up': case 'Polo': return EASE_SHIRT;
+      default: return EASE;
+    }
+  })();
+  const e = { ...pickEase(t, o.fit) };
+  const ss = sleeveStyleOf(o);
+  if (ss === 'Dropped') {
+    e.shoulder *= 1.09;
+    e.drop += 0.12;
+    e.sleeve *= 1.05;
+  } else if (ss === 'Raglan') {
+    e.shoulder *= 0.98;
+    e.drop += 0.02;
   }
+  return e;
 }
 const LENGTH_V: Record<TopLength, number> = { Crop: 0.8, Waist: 1.1, Hip: 1.4, Long: 1.7 };
+/** Boxy bodies run short and wide. */
+const LENGTH_BOXY: Record<TopLength, number> = { Crop: 0.74, Waist: 0.98, Hip: 1.22, Long: 1.5 };
 const LENGTH_MOTO: Record<TopLength, number> = { Crop: 0.85, Waist: 1.12, Hip: 1.32, Long: 1.58 };
 const NECK_V: Record<NeckKind, number> = { Crew: 0.07, Scoop: 0.17, V: 0.27 };
 
@@ -191,7 +259,7 @@ const DRESS_S: Record<DressLen, number> = { Mini: 0.2, Midi: 0.62, Maxi: 0.93 };
 export const dressHemV = (o: TopOpts) => 1.5 + SKIRT_V * DRESS_S[dressLenOf(o)];
 
 function buildDress(o: TopOpts): Pt[] {
-  const e = EASE[o.fit];
+  const e = pickEase(EASE, o.fit);
   const top = dressTopOf(o);
   const sil = silhouetteOf(o);
   const sl = sleeveOf(o);
@@ -245,15 +313,20 @@ function neckFront(o: TopOpts): { v: number; vee: boolean } {
     case 'Bomber': return { v: 0.05, vee: false };
     case 'Puffer': return { v: 0.03, vee: false };
     case 'Sweatshirt': return { v: 0.08, vee: false };
+    case 'Quarter zip': return { v: 0.04, vee: false };
+    case 'Mock neck': return { v: 0.035, vee: false };
+    case 'Anorak': return { v: 0.03, vee: false };
+    case 'Work jacket': return { v: 0.08, vee: false };
+    case 'Coach jacket': return { v: 0.07, vee: false };
     case 'Zip hoodie': return { v: 0.03, vee: false };
     case 'Hoodie': return { v: 0.03 + NECK_V[o.neck], vee: false };
     case 'Tank': return { v: NECK_V[o.neck] + 0.06, vee: false };
     default: return { v: NECK_V[o.neck], vee: false };
   }
 }
-const NECK_HALF: Partial<Record<TopBlock, number>> = { Tank: 0.36, 'Moto jacket': 0.32, Blazer: 0.3, Trench: 0.3, 'Button-up': 0.27, Trucker: 0.28, Bomber: 0.27, Puffer: 0.27, Polo: 0.28 };
+const NECK_HALF: Partial<Record<TopBlock, number>> = { 'Mock neck': 0.24, 'Quarter zip': 0.26, Anorak: 0.26, 'Work jacket': 0.28, 'Coach jacket': 0.28, Tank: 0.36, 'Moto jacket': 0.32, Blazer: 0.3, Trench: 0.3, 'Button-up': 0.27, Trucker: 0.28, Bomber: 0.27, Puffer: 0.27, Polo: 0.28 };
 const LENGTH_TAILORED: Record<TopLength, number> = { Crop: 0.9, Waist: 1.12, Hip: 1.38, Long: 1.6 };
-const lengthsOf = (o: TopOpts) => (o.block === 'Moto jacket' || o.block === 'Bomber' || o.block === 'Trucker' ? LENGTH_MOTO : o.block === 'Blazer' ? LENGTH_TAILORED : LENGTH_V);
+const lengthsOf = (o: TopOpts) => (o.fit === 'Boxy' && o.block !== 'Dress' ? LENGTH_BOXY : o.block === 'Moto jacket' || o.block === 'Bomber' || o.block === 'Trucker' || o.block === 'Work jacket' ? LENGTH_MOTO : o.block === 'Blazer' ? LENGTH_TAILORED : LENGTH_V);
 /** Coat hem v (the skirt part of the body mapping starts at 1.5). */
 const COAT_V: Record<TopLength, number> = { Crop: 1.5, Waist: 1.62, Hip: 1.8, Long: 2.05 };
 export const coatHemV = (o: TopOpts) => COAT_V[o.length];
@@ -286,13 +359,17 @@ function buildCoat(o: TopOpts): Pt[] {
   return [torsoPt(-0.3, -0.01, 'neckL'), ...left, ...right, torsoPt(0.3, -0.01, 'neckR'), nf];
 }
 
+/** How far the hem corners ride above the lowest point of a curved hem, in v. */
+export const CURVE_V = 0.07;
+
 /** Keyed outline points, clockwise from the left neck, ending at the front neck point. */
 export function buildTopPoints(o: TopOpts): Pt[] {
   if (o.block === 'Dress') return buildDress(o);
   if (o.block === 'Trench') return buildCoat(o);
   const e = easeOf(o);
-  const banded = isBanded(o), hood = o.block === 'Hoodie' || o.block === 'Zip hoodie';
-  const len = o.tuck && canTuck(o) ? 1.12 : lengthsOf(o)[o.length];
+  const banded = isBanded(o), hood = o.block === 'Hoodie' || o.block === 'Zip hoodie' || o.block === 'Anorak';
+  const curved = hemOf(o) === 'Curved' && !o.tuck;
+  const len = o.tuck && canTuck(o) ? 1.12 : lengthsOf(o)[o.length] - (curved ? CURVE_V : 0);
   const neckW = NECK_HALF[o.block] ?? 0.3;
   const cuff = cuffedOf(o);
   const side = (s: -1 | 1): Pt[] => {
@@ -312,7 +389,7 @@ export function buildTopPoints(o: TopOpts): Pt[] {
     }
     out.push(torsoPt(s * (o.length === 'Crop' && !o.tuck ? e.body * 0.97 : e.waist), Math.min(1, len - 0.02), `side${k}`));
     // banded hems are gathered in by a band, so they do not flare; puffers and tailored blocks hang straight
-    const flare = !banded && len > 1.2 && (o.block === 'Tank' || o.block === 'Tee' || o.block === 'Long sleeve' || o.block === 'Polo');
+    const flare = !banded && !curved && len > 1.2 && (o.block === 'Tank' || o.block === 'Tee' || o.block === 'Long sleeve' || o.block === 'Polo' || o.block === 'Mock neck');
     out.push(torsoPt(s * (flare ? Math.max(e.waist, e.body) * 1.04 + 0.1 : hood ? e.waist * 0.99 : o.block === 'Puffer' ? e.waist * 1.02 : e.waist), len, `hem${k}`));
     return out;
   };
@@ -523,7 +600,7 @@ export interface TopShape {
 /** Map the top onto the body, adding in-between points so every edge follows the body. */
 /** How straight a fit hangs. */
 export const stiffOf = (o?: TopOpts) =>
-  o?.block === 'Dress' || o?.block === 'Moto jacket' || o?.block === 'Blazer' || o?.block === 'Trench' ? 0 : o?.fit === 'Oversized' ? 1 : o?.fit === 'Regular' ? 0.65 : 0;
+  o?.block === 'Dress' || o?.block === 'Moto jacket' || o?.block === 'Blazer' || o?.block === 'Trench' ? 0 : o?.fit === 'Oversized' ? 1 : o?.fit === 'Boxy' ? 0.85 : o?.fit === 'Regular' ? 0.65 : 0;
 
 export function topShape(t: TorsoProfile, points: Pt[], stiff = 0, o?: TopOpts): TopShape {
   const n = points.length;
@@ -535,6 +612,14 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0, o?: TopOpts):
   const hems: Vec[][] = [];
   const sleeveRun: { L: Vec[]; R: Vec[] } = { L: [], R: [] };
   const key = (p: Pt) => p.key ?? '';
+  let curvedDip: number | null = null;
+  if (o && hemOf(o) === 'Curved' && !o.tuck) {
+    const hp = points.find((p) => p.key === 'hemL');
+    if (hp) {
+      const v0 = uv(hp).v;
+      curvedDip = topForward(t, torsoPt(0, v0 + CURVE_V), stiff).y - topForward(t, torsoPt(0, v0), stiff).y;
+    }
+  }
 
   for (let i = 0; i < n; i++) {
     if (i === iNF) continue;
@@ -577,7 +662,9 @@ export function topShape(t: TorsoProfile, points: Pt[], stiff = 0, o?: TopOpts):
           // looser tops ripple along the hem as the fabric hangs in soft folds
           const skirtWave = o?.block === 'Dress' ? (o.silhouette === 'A-line' ? 3.4 : o.silhouette === 'Slip' ? 1.1 : 0) : 0;
           const wave = (stiff * 3.2 + skirtWave) * Math.sin(f * Math.PI * 7 + 0.6) * Math.sin(Math.PI * f);
-          steps.push({ ...p, y: p.y + (o?.block === 'Dress' ? 5 : 4) * Math.sin(Math.PI * f) + wave });
+          // a curved (shirttail) hem rides high at the side seams and drops to the centre in a round U
+          const dip = curvedDip != null ? curvedDip * Math.pow(Math.sin(Math.PI * f), 0.62) : (o?.block === 'Dress' ? 5 : 4) * Math.sin(Math.PI * f);
+          steps.push({ ...p, y: p.y + dip + (curvedDip != null ? 0 : wave) });
         }
       } else if (a.r && a.r === b.r && /^sl/.test(key(a)) && /^sl/.test(key(b))) {
         // sleeve hem: curves around the arm
